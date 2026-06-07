@@ -1,0 +1,27 @@
+# LONLY Pentest Agent - Python Dependencies
+
+# LangChain Core
+langchain
+langchain-core
+langchain-community
+langchain-ollama
+
+# LLM Backend (local via Ollama)
+ollama
+
+# Vector Store & Embeddings (RAG)
+chromadb
+sentence-transformers
+huggingface-hub
+
+# Graph Analysis (BloodHound)
+networkx
+
+# Data Validation
+pydantic
+
+# HTTP Requests (CVE Lookup)
+requests
+
+# Standard library (no install needed):
+# cmd, subprocess, shlex, os, zipfile, json, time, re
