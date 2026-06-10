@@ -256,10 +256,4 @@ Please open an issue or pull request.
 
 ---
 
-## 📄 License
-
-MIT License. See `LICENSE` for details.
-
----
-
 *Built for security professionals. Use responsibly.*
