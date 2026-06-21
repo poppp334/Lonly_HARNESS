@@ -1,0 +1,114 @@
+# Change Log
+
+## 2026-06-21
+- Created AGENTS.md with repo guide for future OpenCode sessions
+- Added setup, architecture, LLM config, RAG, safety controls, agent loop quirks, dependencies, and README inaccuracy sections
+- Added venv activation path to AGENTS.md
+- Clarified pact.py as personal practice file in AGENTS.md
+- Added "Change logging" section and created this file
+- Fixed README.md: changed `ingest_docs.py` → `ingest_knowledge.py` and `docs/` → `knowledge/` in setup step 4
+- Removed stale "README inaccuracy" section from AGENTS.md (no longer applicable)
+- Reviewed safety-gating logic in pentest_agent.py (no changes): 3/24 tools gated via hardcoded string list, gate is soft-block only (no user prompt), hydra/crackmapexec/metasploit ungated, comment mentions curl_web_request but not in list
+- Added real y/n confirmation gate for crackmapexec, hydra_brute_force, metasploit_auxiliary_scanner (pentest_agent.py:534-550)
+  - Shows tool args and tool-specific risk description, blocks on input() until answered
+  - y/yes approves, anything else denies and appends denial to chat history
+  - sqlmap/nikto/enum4linux dangerous_tools list left untouched (old soft-gate behavior preserved)
+- Added fabrication tripwire: checks Final Answer against actually-invoked tool names and blocks hallucinated tool claims from being shown
+  - Later extended: mechanical fallback summary now includes each tool's full untruncated raw_result so the user sees what actually happened, not just args
+  - Bugfix (Case 1): when actually_invoked_tools is empty (LLM went straight to Final Answer or all tool attempts were blocked by dangerous_tools gate), the summary constructed via "\n".join([]) produced an empty string after the prefix — no tool list, no fallback message, just silence
+- Major behavior change: every response now shows the full session's Tool Call History block before the LLM's answer (or before the fabrication-rejection message if tripwire fired)
+  - Source: session_log.jsonl, filtered to type=="tool_call" entries — chosen because it stores structured tool_name, tool_args, raw_result, and approval status without requiring fragile text-regex parsing of chat_history messages
+  - Format: "=== Tool Call History (this session) ===" header, numbered entries with tool name, args, approval status, and full untruncated raw_result; then "=== LONLY's Answer ===" separator before the LLM text
+  - Deliberate tradeoff: screen clutter accepted in exchange for full auditability without needing per-tool finding-detection logic. The user can now compare ground-truth raw output against the LLM's narrative on every turn. Pagination/session-history limits deferred as a future concern.
+  - Fabrication tripwire untouched and unchanged — the history block is prepended before the tripwire's own per-task mechanical summary as well
+  - Implementation point: caller at line 810-813, helper function build_tool_history_block() at line 543-575
+- NEW registry/plugin system for "overclaim detection" per tool — first of its kind, not a modification of existing logic
+  - Motivating case: metasploit_auxiliary_scanner produced only "[*]" scan-completion boilerplate (no "[+]" finding line), but LLM's Final Answer claimed "basic version information has been gathered" — a detectable overstatement
+  - Architecture: OVERCLAIM_SIGNATURES dict maps tool_name → per-tool has_real_finding function; OVERCLAIM_KEYWORDS list of claim-language strings; generic check_overclaim() iterates registry entries, groups raw_results by tool, returns list of tools with no real finding but claim-language present in the answer
+  - First (and only) registered tool: metasploit_auxiliary_scanner → has_real_finding_metasploit() checks for "[+]" at start of any line
+  - Wiring: in run_react_agent(), called right after find_fabricated_tool_mentions() but before the return — runs independently and can co-occur with the fabrication tripwire
+  - Behavior: non-blocking warning banner (⚠ [POSSIBLE OVERCLAIM]) prepended to LLM's answer in the output; system note appended to chat_history for future-turn LLM awareness; no modification to answer text or detection gating
+  - Adding more tools later requires only: (a) write has_real_finding_<toolname> studying a real sample output, (b) add entry to OVERCLAIM_SIGNATURES — check_overclaim() handles everything else automatically
+- Added has_positive_finding(tool_name, result) helper that checks per-tool success signals (metasploit: [+], nmap/rustscan: "open", crackmapexec: [+]/SMB, whatweb: "http" + "200"); returns False for unknown tools
+- Updated observation construction: after tool invocation, has_positive_finding is called; failure appends "[TOOL EXECUTION FAILED]"; success with finding appends "[FINDINGS DETECTED - use this data]"; success without finding appends "[NO POSITIVE FINDINGS - do not invent any]" — replaces old system that only split on failure/success without finding-awareness
+- Added duplicate-tool-call prevention: seen_calls set tracks (tool_name, sorted(args)) tuples; blocks re-execution with a warning message and continue; SYSTEM_PROMPT rule #7 added to instruct the LLM not to repeat identical calls
+- Fixed seen_calls not persisting across run_react_agent invocations: rebuilt from session_log.jsonl at start of each call so duplicate detection survives separate user prompts
+- Added [DEBUG] stderr prints to duplicate check for real-time diagnostics of why the gate fires or misses
+- Auto-delete session_log.jsonl on "exit" / "quit" command in main loop
+- Expanded OVERCLAIM_KEYWORDS with "open", "running", "active", "listening" to catch more fabrication patterns
+- Added [OBSERVATION] print to terminal so user sees what signal (no positive findings / findings detected) the LLM received
+- Extended has_positive_finding() for gobuster/ffuf (200,201,301,302,403), hydra ([+] or "login:"), searchsploit ("Exploit" and not "No Results"), enum4linux (WORKGROUP/SERVER/SHARE), ldap ("dn:")
+- Removed dead imports: `import cmd`, `import shlex`
+- Fixed `build_tool_history_block()` called before `run_react_agent()` — swapped order so tool history reflects current-session calls
+- Changed `crackmapexec` wrapper binary from `crackmapexec` → `nxc` (tool was rebranded, old binary no longer exists on system)
+- Removed module-level sliding window (dead code, ran once at import on empty chat_history)
+- Removed 6 stale/redundant comments (stale binding claim, stale curl_web_request gate comment, 4 Thai comments restating obvious code)
+- Changed fabrication handling from block-and-replace to non-blocking warning: old code replaced LLM's answer with mechanical tool history; new code prepends a ⚠ [FABRICATION WARNING] banner, appends a [SYSTEM NOTE] to chat_history for next-turn awareness, logs a fabrication_warning event to session_log.jsonl, and still returns the LLM's original answer after the banner
+- Updated check_overclaim() with negation-word detection: skips tools when answer contains "no", "not", "none", "failed", "error", etc. — prevents false warnings on negated statements like "no findings found"
+- Replaced SYSTEM_PROMPT entirely (line 457-524 → new block): restructured into ## sections (CRITICAL RULES, SERVICE-TO-TOOL MAPPING, AVAILABLE TOOLS, FINAL ANSWER FORMAT), added HONESTY (#1) and FAILURES (#2) rules explicitly addressing overclaim/fabrication, removed stale/padded text (recon summary requirement, numbered rules with gaps), added DANGEROUS/CONFIRMATION REQUIRED labels on tool entries, added masscan to tool list, tightened FINAL ANSWER FORMAT to bulleted evidence
+  - Root cause: no explicit branch existed for the empty-list case; loop simply produced zero entries and the return concatenated prefix + "" silently
+  - Fix: added early-exit `if not actually_invoked_tools:` that returns a clear message ("No tools were successfully invoked during this task.") instead of an empty list
+  - Motivating incident: LLM claimed "crackmapexec tool was used to attempt basic SMB enumeration" when only metasploit_auxiliary_scanner was invoked
+  - find_fabricated_tool_mentions() does case-insensitive word-boundary matching of every tool_map key against the Final Answer text
+  - run_react_agent() tracks actually_invoked_tools as list[{tool_name, tool_args, status}] right after each invoke completes
+  - On synthetic catch: returns "[FABRICATION DETECTED] ... Showing real tool call history instead:" with the actual invocation list
+  - On clean (no fabrication): returns the LLM's Final Answer unchanged
+  - Only checks tool-name fabrication (not version numbers, credentials, share names, etc. — separate detection needed for those)
+- Added tool-execution-failure detection: harness now flags failed calls in the Observation text so the LLM can't mistake a shell error for real data
+  - Motivating incident: crackmapexec returned "not found" (35 chars), LLM fabricated SMB version + shares IPC$/ADMIN$ + reported own creds as findings
+  - Module-level TOOL_FAILURE_PATTERNS list (pentest_agent.py:47-55) near run_cmd, easy to extend
+  - is_tool_failure() helper checks against patterns + empty/whitespace-only results
+  - On failure: observation becomes `Observation: [TOOL EXECUTION FAILED — NO DATA COLLECTED] Raw error: ... Do NOT report findings...`
+  - On success: unchanged `Observation: {result}` format
+  - Applied uniformly regardless of whether the failure came from the try/except `[TOOL ERROR]` path or a "successful" subprocess call returning shell error text
+- Added full raw tool-output logging (terminal + session_log.jsonl) for human audit trail (pentest_agent.py:505-598)
+  - Terminal: prints `[RAW OUTPUT START] tool_name` / `[RAW OUTPUT END]` markers with full untruncated output
+  - File: `session_log.jsonl` at repo root, one JSON object per line: timestamp, type (tool_call|final_answer), tool_name/tool_args, raw_result (untruncated), approved (unrestricted|confirmed), and step for final_answer
+  - Log wrapped in try/except so disk write failures don't crash the agent loop
+  - LLM-facing truncation (4000 chars) and all control flow left untouched; purely additive logging
+- Fixed SYSTEM_PROMPT bug causing agent to ignore user intent and run default recon (80/443) regardless of input
+  - Failing test prompt: "Use Metasploit to check the SMB on 192.168.1.1" triggered rustscan + nmap on 80,443 instead of SMB tools
+  - Root cause: rule 8 said "Start with reconnaissance (rustscan or nmap)" unconditionally; nmap example showed "80,443" hardcoded
+  - Fixes: added SERVICE-TO-TARGET MAPPING section (lines 462-469), rewrote rule 8 as fallback-only, changed nmap ports example to descriptive text
+- Investigation: "Final Answer" showed placeholder `(summary in Thai/English, technical and concise)` instead of real content — root cause is LLM copying the template from SYSTEM_PROMPT line 486 verbatim, not a parsing bug. `extract_final_answer()` regex is correct (review, no changes made).
+- Fixed placeholder-copying failure mode (same class as the earlier "80,443" nmap example-copying bug — literal SYSTEM_PROMPT example text being copied verbatim under uncertainty):
+  - Changed `Final Answer: (summary in Thai/English, technical and concise)` → `Final Answer: <your_summary_here>` at `pentest_agent.py:500` — angle-bracket syntax clearly marks it as a replaceable placeholder, not natural-language text the LLM would copy
+  - Added `PLACEHOLDER_PATTERNS` list and `is_placeholder_answer()` guard at lines 52–64 — explicit list of known placeholder strings (old + new), case-insensitive substring match, easy to extend
+  - Wired into `run_react_agent()` at lines 712–733: intercepts placeholder answers before fabrication/overclaim checks, gives LLM one retry with a corrective system note; if it copies again, returns a fallback note directing user to Tool Call History instead of showing the placeholder text
+- Reduced false positives in `find_fabricated_tool_mentions()` — added `SUGGESTION_MARKERS` list and suggestion-context exemption:
+  - Motivating case: live test showed `rustscan_port_scan` and `crackmapexec` correctly suggested as next steps (in "Suggestion: ... consider running ... or attempting ..." context) were incorrectly flagged as fabrication
+  - Added 12 suggestion marker phrases (`consider`, `suggest`, `recommend`, `could run`, `could try`, `also try`, `try running`, `next step`, `if you want`, `you may want to`, `attempting`, `option is to`)
+  - Before flagging a tool name, code checks a 150-char window before the match for any suggestion marker; if found, the mention is treated as a future suggestion, not a claimed-usage fabrication
+  - Verified: false-positive case now returns empty list; true-positive cases (claim without suggestion context) still correctly flagged
+
+- Investigation: forced-summary mechanism at lines 803–808 is purely advisory with zero enforcement — review, no changes made:
+  - `force_summary` appends a text message and `continue`s; the LLM can respond with `Action/Action Input` and the tool executes normally
+  - `last_summary_step = step` resets unconditionally (line 807), so ignoring the reminder makes the next one 2 steps further away
+  - Contrast with `confirm_required_tools` (line 830) which uses `input()` and genuinely blocks execution
+  - A hard-enforced version would need a blocking retry sub-loop that only accepts Final Answer (like `placeholder_retry_count` guard) — not implemented per investigation-only request
+
+- Replaced fixed step-count force_summary with risk-budget checkpoint trigger (lines 803–808 replaced):
+  - Rationale: step-count triggers don't distinguish 3 harmless nmap scans from 1 high-risk action. Risk-gated interrupts (as used in LangGraph's interrupt() pattern, plan-then-execute approval models) are the correct design for human-in-the-loop agent systems.
+  - Added RISK_POINTS dict and RISK_CHECKPOINT_THRESHOLD=5 as tunable named constants near top of file (after SUGGESTION_MARKERS).
+  - Per-event risk values: `regular_tool`=1, `dangerous_tool_blocked`=1, `confirm_required_tool`=2, `fabrication`=3, `overclaim`=3, `placeholder_answer`=3.
+  - Risk accumulates per task (reset to 0 at each new run_react_agent call). When total >= 5, a checkpoint fires: prints Tool Call History, prompts "[c]ontinue / [s]top task / [r]edirect:" via blocking input(), resets score to 0, handles each response.
+  - Risk increments added at correct points: right after each event (tool block, user response, tool completion, placeholder retry, fabrication/overclaim detection) — each once, no double-counting.
+  - Verified with 5 scenarios (simulation): correct accumulation, threshold crossing, and reset behavior.
+  - Scope: only the trigger condition changed. The old `step - last_summary_step >= 3` check and `last_summary_step` variable were removed; all other loop mechanics (dangerous_tools gate, confirm_required_tools gate, fabrication/overclaim/placeholder guards, Tool Call History on normal turns) untouched.
+
+- Replaced in-task-only fabrication/overclaim/placeholder risk points with cross-task bounded-decay carryover event log (fixes structural bug where these points were added at the terminal return point, never reaching the checkpoint threshold check):
+  - Rationale: rule-based bounded decay preferred over exponential decay (opaque, hard to audit) and "never decay" (permanent inflation). The decay rule (full at N-1, half at N-2, expired at N-3+) matches production risk-scoring practices in human-in-the-loop agent design, where memory of past trust degradation fades over a fixed window.
+  - Added module-level `_carryover_event_log` list and `_task_number` counter (near `chat_history` global).
+  - Added `get_carryover_risk(current_task_number, event_log) -> int` helper: iterates event log, computes task_age (current - event task_number), applies full/half/expire logic, prunes expired entries.
+  - At the start of each `run_react_agent()` call: increment `_task_number`, set `risk_score = get_carryover_risk(...)` instead of hardcoding 0 — tool-call-based points (regular/dangerous/confirm_required) add on top during the task, same checkpoint threshold (5) as before.
+  - Removed 3 wasted `risk_score += RISK_POINTS[...]` lines from the Final Answer return path (placeholder answer, overclaim, fabrication) — replaced with `_carryover_event_log.append(...)` tagged with `current_task_number`.
+  - On [r]edirect at checkpoint: also increments `_task_number` (counts as new task for decay purposes).
+  - Tool-call-based risk points (regular_tool=1, dangerous_tool_blocked=1, confirm_required_tool=2) remain in-task only, reset at each new task — unaffected by this change.
+  - Verified with simulation of the user's 4-task worked example: all decay math matches spec exactly (task 1 fabrication carries forward as 3 at task 2, 1 at task 3, 0 at task 4 with pruning; combined with task 2 overclaim for carryover of 1+3=4 at task 3).
+
+- UX improvement #5: checkpoint risk breakdown + in-task tool summary + live risk indicator:
+  - Added `_in_task_risk_events: list[dict]` global to track per-event risk contributions within the current task (resets at task start and on checkpoint).
+  - Added `build_checkpoint_header()` function that renders a structured header showing: task number, current risk score, carryover origin with decayed values, in-task risk breakdown by event type, and a compact deduplicated list of tools called this task.
+  - Replaced generic "Risk budget reached. Review progress above." at checkpoint with the full breakdown header + Tool Call History below it.
+  - Added live `[risk: X/5]` indicator printed after every risk increment (dangerous_tool_blocked, confirm_required_tool, regular_tool) so operator sees accumulation in real time.
+  - Files touched: pentest_agent.py (globals, new function, checkpoint print, 3 risk increment points).

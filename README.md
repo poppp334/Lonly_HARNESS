@@ -177,9 +177,9 @@ ollama pull gemma4:e4b
 
 4. **(Optional) Set up the RAG knowledge base**
 ```bash
-# Place your pentest cheat sheets / markdown files in a docs/ folder
-# Then run the ingestion script (if provided) to populate ChromaDB
-python ingest_docs.py
+# Place your pentest cheat sheets / markdown files in the knowledge/ folder
+# Then run the ingestion script to populate ChromaDB
+python ingest_knowledge.py
 ```
 
 5. **Run LONLY**
