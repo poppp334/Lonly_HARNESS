@@ -112,3 +112,5 @@
   - Replaced generic "Risk budget reached. Review progress above." at checkpoint with the full breakdown header + Tool Call History below it.
   - Added live `[risk: X/5]` indicator printed after every risk increment (dangerous_tool_blocked, confirm_required_tool, regular_tool) so operator sees accumulation in real time.
   - Files touched: pentest_agent.py (globals, new function, checkpoint print, 3 risk increment points).
+
+- Updated README.md: added risk-budget checkpoint config docs, updated project structure (AGENTS.md, UPDATE.md, ingest_knowledge.py, knowledge/), replaced forced summarization with risk-budget checkpoint feature description, added checkpoint usage docs with c/s/r prompt example, fixed clone URL.
