@@ -35,7 +35,8 @@ It wraps industry-standard Kali Linux tools into a unified AI-driven interface, 
 - 🩸 **BloodHound Analysis** — Parses SharpHound collection ZIPs locally using NetworkX to find attack paths to Domain Admins
 - 🔍 **Live CVE Lookup** — Queries the NVD API in real time and cross-references results with the local Exploit-DB via SearchSploit
 - 🪟 **Sliding Window Memory** — Maintains a rolling chat history (last 20 messages) to preserve context without overflowing the LLM context window
-- 🔄 **Forced Summarization** — Prevents infinite loops by requiring a progress report every 3 tool calls
+- 🔄 **Risk-Budget Checkpoint** — Tool calls accumulate risk points; when the budget (5 pts) is exceeded, the operator reviews progress and decides to continue, stop, or redirect the task
+- ⚖️ **Cross-Task Carryover** — Fabrication/overclaim/placeholder events decay across tasks (full previous task, half two tasks ago, expired after three), preventing degraded LLM behavior from silently compounding
 
 ---
 
@@ -161,7 +162,7 @@ sudo apt update && sudo apt install -y nmap rustscan masscan nikto sqlmap \
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/lonly-pentest-agent.git
+git clone https://github.com/poppp334/Lonly_HARNESS.git
 cd lonly-pentest-agent
 ```
 
@@ -211,23 +212,45 @@ LONLY will autonomously:
 >>> Analyze my BloodHound data at /tmp/bloodhound.zip
 ```
 
-### Shell Commands
+### Interactive Commands
 | Command | Description |
-|---|---|
+|---------|---|
 | `exit` / `quit` | Shut down LONLY |
 | `clear` | Wipe conversation memory and start fresh |
 | `help` | Show usage tips |
+
+### Checkpoint Prompts
+When the risk budget is reached, LONLY pauses and shows a detailed breakdown:
+```
+=== Task 2 — Checkpoint (risk 5/5) ===
+  Carryover: 3 pts [task 1: fabrication = 3 full]
+  In-task:   2 pts [1 regular + 1 confirm required tool]
+  In-task tools: nmap_port_scan, rustscan_port_scan
+  Total:     5 >= 5 — paused for operator review.
+[c]ontinue / [s]top task / [r]edirect:
+```
+- `c` — continue the current task (risk resets)
+- `s` — stop the task and return to the main prompt
+- `r` — redirect to a new objective (counts as a new task for carryover decay)
 
 ---
 
 ## 🔧 Configuration
 
-To change the LLM model, edit line 422 in `pentest_agent.py`:
+### LLM Model
+Edit `llm = ChatOllama(...)` near the top of `pentest_agent.py`:
 ```python
 llm = ChatOllama(model="gemma4:e4b", temperature=0.2, num_ctx=8192)
 ```
-
 Replace `"gemma4:e4b"` with any model available in your Ollama installation (e.g., `llama3`, `mistral`, `qwen2.5`). More capable models will produce better reasoning.
+
+### Risk-Budget Checkpoint
+The checkpoint system is tuned via named constants in `pentest_agent.py`:
+- `RISK_CHECKPOINT_THRESHOLD = 5` — risk score that triggers operator review
+- `RISK_POINTS` dict — per-event values: `regular_tool=1`, `confirm_required_tool=2`, `dangerous_tool_blocked=1`, `fabrication/overclaim/placeholder=3`
+
+### Safety Controls
+Intrusive tools (`sqlmap`, `nikto`, `enum4linux`) are blocked by default at line ~920 without operator permission. Tools requiring explicit confirmation (`crackmapexec`, `hydra`, `metasploit_auxiliary_scanner`) prompt `[y/n]` before execution.
 
 ---
 
@@ -235,8 +258,12 @@ Replace `"gemma4:e4b"` with any model available in your Ollama installation (e.g
 
 ```
 lonly-pentest-agent/
-├── pentest_agent.py      # Main agent — all tools, loop, and CLI
-├── chroma_db/            # ChromaDB vector store for RAG (auto-created)
+├── pentest_agent.py      # Main agent — ReAct loop, 24 tools, risk-budget checkpoint, CLI
+├── ingest_knowledge.py   # ChromaDB ingestion from knowledge/*.md
+├── knowledge/            # RAG source markdown (kerberoasting, linux-privesc, etc.)
+├── chroma_db/            # ChromaDB vector store (auto-created by ingest_knowledge.py)
+├── AGENTS.md             # Agent configuration guide for opencode / AI assistants
+├── UPDATE.md             # Changelog tracking all modifications
 ├── requirements.txt      # Python dependencies
 └── README.md
 ```
