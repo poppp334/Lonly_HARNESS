@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LONLY — AI-Powered Penetration Testing Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg-primary:#f8f9fc;
+      --bg-secondary:#f0f1f5;
+      --bg-card:#ffffff;
+      --bg-card-hover:#f3f4f8;
+      --accent:#6366f1;
+      --accent-hover:#4f46e5;
+      --accent-muted:#818cf8;
+      --accent-subtle:rgba(99,102,241,0.1);
+      --text-primary:#1a1a2e;
+      --text-secondary:#4a4a5e;
+      --text-muted:#6a6a7e;
+      --border:#e2e4ea;
+      --shadow:0 1px 3px rgba(0,0,0,0.04),0 1px 2px rgba(0,0,0,0.03);
+      --radius:12px;
+      --radius-sm:8px;
+      --transition:0.2s ease;
+    }
+    html{scroll-behavior:smooth}
+    body{
+      font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+      background:var(--bg-primary);
+      color:var(--text-primary);
+      line-height:1.6;
+      overflow-x:hidden;
+      -webkit-font-smoothing:antialiased;
+    }
+    ::-webkit-scrollbar{width:6px}
+    ::-webkit-scrollbar-track{background:var(--bg-primary)}
+    ::-webkit-scrollbar-thumb{background:#c4c7d0;border-radius:3px}
+    ::selection{background:var(--accent);color:#fff}
+
+    .container{max-width:1120px;margin:0 auto;padding:0 24px}
+
+    nav{
+      position:fixed;top:0;left:0;right:0;z-index:1000;
+      background:rgba(255,255,255,0.85);backdrop-filter:blur(16px);
+      border-bottom:1px solid var(--border);
+      transition:var(--transition);
+    }
+    nav .container{display:flex;align-items:center;justify-content:space-between;height:60px}
+    nav .logo{font-family:'JetBrains Mono',monospace;font-weight:600;font-size:17px;color:var(--text-primary);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.3px}
+    nav .logo .ascii-nav{color:var(--text-muted);font-size:9px;line-height:1.2;white-space:pre}
+    .nav-links{display:flex;gap:2px;list-style:none;align-items:center}
+    .nav-links a{
+      padding:7px 14px;border-radius:6px;
+      color:var(--text-muted);text-decoration:none;font-size:13px;font-weight:500;
+      transition:var(--transition);
+    }
+    .nav-links a:hover{color:var(--text-primary);background:var(--bg-card)}
+    .nav-links a.github-link{
+      background:var(--accent-subtle);color:var(--accent);margin-left:6px;
+      border:1px solid rgba(99,102,241,0.15);
+    }
+    .nav-links a.github-link:hover{background:rgba(99,102,241,0.15)}
+    .nav-toggle{display:none;background:none;border:none;color:var(--text-primary);font-size:22px;cursor:pointer;padding:8px}
+
+    section{padding:96px 0;border-bottom:1px solid var(--border)}
+    section:last-child{border-bottom:none}
+
+    .section-label{
+      font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:1.5px;
+      margin-bottom:8px;
+    }
+    .section-title{
+      font-size:34px;font-weight:700;margin-bottom:20px;letter-spacing:-0.5px;
+      color:var(--text-primary);
+    }
+    .section-subtitle{color:var(--text-secondary);font-size:16px;max-width:600px;margin-bottom:56px}
+
+    .hero{
+      min-height:100vh;display:flex;align-items:center;padding:100px 0 64px;border-bottom:none;
+      position:relative;
+    }
+    .hero-content{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center}
+    .hero-badge{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:5px 12px;border-radius:6px;
+      background:var(--accent-subtle);border:1px solid rgba(99,102,241,0.12);
+      font-size:11px;font-weight:500;color:var(--accent);margin-bottom:20px;
+    }
+    .hero h1{
+      font-size:48px;font-weight:800;line-height:1.15;margin-bottom:6px;
+      letter-spacing:-1px;
+    }
+    .hero h1 .accent{color:var(--accent)}
+    .hero .tagline{
+      font-size:16px;color:var(--text-secondary);margin-bottom:28px;min-height:24px;
+      border-right:2px solid var(--accent);display:inline;white-space:nowrap;
+      animation:blinkCursor 0.8s step-end infinite;
+    }
+    @keyframes blinkCursor{50%{border-color:transparent}}
+    .hero .desc{font-size:15px;color:var(--text-secondary);line-height:1.7;margin-bottom:32px}
+    .hero-cta{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:11px 22px;border-radius:8px;
+      font-size:13px;font-weight:600;text-decoration:none;
+      transition:var(--transition);cursor:pointer;border:none;
+      font-family:'Inter',sans-serif;
+    }
+    .btn-primary{background:var(--accent);color:#fff}
+    .btn-primary:hover{background:var(--accent-hover)}
+    .btn-secondary{
+      background:transparent;color:var(--text-primary);
+      border:1px solid var(--border);
+    }
+    .btn-secondary:hover{background:var(--bg-card);border-color:var(--text-muted)}
+    .btn-ghost{background:transparent;color:var(--text-secondary);border:1px solid var(--border)}
+    .btn-ghost:hover{background:var(--bg-card);color:var(--text-primary)}
+    .hero-visual{display:flex;justify-content:center;align-items:center}
+    .ascii-avatar{
+      font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.1;
+      color:var(--text-primary);white-space:pre;text-align:center;user-select:none;
+      opacity:0.85;
+    }
+    .ascii-avatar-small{
+      font-family:'JetBrains Mono',monospace;font-size:7px;line-height:1.2;
+      color:var(--text-muted);white-space:pre;margin-right:6px;opacity:0.4;
+    }
+
+    .scroll-indicator{display:flex;justify-content:center;margin-top:48px;color:var(--text-muted)}
+
+    .disclaimer{
+      background:var(--bg-card);border:1px solid var(--border);
+      border-left:3px solid var(--accent);
+      border-radius:var(--radius);
+      padding:28px;
+    }
+    .disclaimer h3{color:var(--text-primary);font-size:15px;margin-bottom:10px}
+    .disclaimer p{color:var(--text-secondary);font-size:13px;line-height:1.7}
+
+    .overview-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start}
+    .overview-text p{color:var(--text-secondary);margin-bottom:14px;font-size:14px;line-height:1.7}
+    .arch-diagram{
+      background:var(--bg-card);border:1px solid var(--border);
+      border-radius:var(--radius);padding:28px;overflow-x:auto;
+      font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.5;
+    }
+    .arch-diagram pre{color:var(--text-muted);white-space:pre}
+    .arch-diagram .accent{color:var(--accent)}
+
+    .tech-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+    .tech-card{
+      background:var(--bg-card);border:1px solid var(--border);
+      border-radius:var(--radius-sm);padding:18px;transition:var(--transition);
+      cursor:pointer;position:relative;
+    }
+    .tech-card:hover{background:var(--bg-card-hover);border-color:var(--accent-muted)}
+    .tech-card:hover .btn-detail{opacity:1;transform:translateY(0)}
+    .tech-card .layer{display:block;font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px}
+    .tech-card .name{display:block;font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:4px;line-height:1.4}
+    .tech-card .purpose{display:block;font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:2px}
+    .btn-detail{display:inline-block;margin-top:10px;font-size:11px;font-weight:600;color:var(--accent);opacity:0;transform:translateY(4px);transition:var(--transition);text-decoration:none}
+    .btn-detail::after{content:' →'}
+
+    .modal-overlay{
+      position:fixed;inset:0;z-index:2000;
+      background:rgba(0,0,0,0.4);backdrop-filter:blur(8px);
+      display:flex;justify-content:flex-end;
+      opacity:0;visibility:hidden;transition:opacity 0.3s ease,visibility 0.3s ease;
+    }
+    .modal-overlay.active{opacity:1;visibility:visible}
+    .modal{
+      width:560px;max-width:100vw;height:100vh;overflow-y:auto;
+      background:var(--bg-card);border-left:1px solid var(--border);
+      padding:40px 36px;position:relative;
+      transform:translateX(100%);transition:transform 0.35s cubic-bezier(0.16,1,0.3,1);
+      box-shadow:-8px 0 32px rgba(0,0,0,0.08);
+    }
+    .modal-overlay.active .modal{transform:translateX(0)}
+    .modal-close{
+      position:absolute;top:20px;right:20px;width:32px;height:32px;
+      background:var(--bg-secondary);border:none;border-radius:50%;
+      font-size:18px;cursor:pointer;color:var(--text-muted);
+      display:flex;align-items:center;justify-content:center;
+      transition:var(--transition);line-height:1;
+    }
+    .modal-close:hover{background:var(--border);color:var(--text-primary)}
+    .modal-badge{font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+    .modal h2{font-size:22px;font-weight:700;margin-bottom:6px;letter-spacing:-0.3px}
+    .modal .subtitle{font-size:13px;color:var(--text-secondary);margin-bottom:24px}
+    .modal h3{font-size:14px;font-weight:600;margin:20px 0 8px;color:var(--text-primary)}
+    .modal p{font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:8px}
+    .modal ul{margin:6px 0 12px;padding-left:18px}
+    .modal li{font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:4px}
+    .modal .code-block{background:#f0f1f5;border:1px solid var(--border);border-radius:6px;padding:14px;overflow-x:auto;margin:10px 0 16px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#4a4a5e;line-height:1.6}
+    .modal .code-block .kw{color:var(--accent)}
+    .modal .code-block .cm{color:#8a8a9e}
+    .modal .links-box{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
+    .modal .links-box a{font-size:12px;font-weight:500;color:var(--accent);text-decoration:none;padding:6px 14px;border:1px solid rgba(99,102,241,0.2);border-radius:6px;transition:var(--transition)}
+    .modal .links-box a:hover{background:var(--accent-subtle);border-color:var(--accent)}
+
+    @media(max-width:768px){
+      .modal{padding:28px 20px;width:100%}
+    }
+
+    .features-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+    .feature-card{
+      background:var(--bg-card);border:1px solid var(--border);
+      border-radius:var(--radius);padding:24px;transition:var(--transition);
+    }
+    .feature-card:hover{background:var(--bg-card-hover);border-color:rgba(99,102,241,0.2)}
+    .feature-card h3{font-size:15px;font-weight:600;margin-bottom:6px;color:var(--text-primary)}
+    .feature-card p{font-size:13px;color:var(--text-secondary);line-height:1.6}
+
+    .tools-section .category{margin-bottom:36px}
+    .tools-section .category-title{
+      font-size:14px;font-weight:600;margin-bottom:12px;
+      display:flex;align-items:center;gap:8px;color:var(--text-primary);
+    }
+    .tools-section .category-title .badge{
+      font-size:10px;padding:2px 8px;border-radius:4px;
+      background:var(--accent-subtle);color:var(--accent);font-weight:500;
+    }
+    .tools-table{width:100%;border-collapse:collapse}
+    .tools-table th,.tools-table td{padding:10px 14px;text-align:left;font-size:13px;border-bottom:1px solid var(--border)}
+    .tools-table th{font-weight:600;color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:0.4px}
+    .tools-table tr:hover td{background:var(--bg-card-hover)}
+    .tools-table td:first-child{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent)}
+    .tools-table td:last-child{color:var(--text-secondary)}
+    .tools-table .warning{color:#f87171}
+
+    .methodology-box{
+      background:var(--bg-card);border:1px solid var(--border);
+      border-radius:var(--radius);padding:24px;margin-bottom:36px;
+    }
+    .methodology-box h4{font-size:14px;font-weight:600;margin-bottom:12px}
+    .methodology-box ul{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:6px 20px}
+    .methodology-box li{font-size:12px;color:var(--text-secondary);padding:3px 0;position:relative;padding-left:14px}
+    .methodology-box li::before{content:'-';position:absolute;left:0;color:var(--accent)}
+    .comparison-table{width:100%;border-collapse:separate;border-spacing:0 6px}
+    .comparison-table th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px}
+    .comparison-table td{padding:14px;background:var(--bg-card);font-size:13px;vertical-align:middle}
+    .comparison-table tr td:first-child{border-radius:6px 0 0 6px;font-weight:600}
+    .comparison-table tr td:last-child{border-radius:0 6px 6px 0}
+    .comparison-table tr:hover td{background:var(--bg-card-hover)}
+    .comparison-table .normal{color:var(--text-muted);font-size:12px}
+    .comparison-table .lonely{color:var(--accent);font-weight:500;font-size:12px}
+    .comparison-table .improvement{color:var(--accent);font-weight:600;font-family:'JetBrains Mono',monospace}
+    .bar-container{width:140px;height:8px;background:var(--bg-primary);border-radius:4px;overflow:hidden}
+    .bar-fill{height:100%;border-radius:4px;width:0;background:var(--accent);transition:width 1.2s ease;position:relative}
+
+    .chart-container{margin:40px 0;padding:28px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius)}
+    .chart-container h4{font-size:15px;font-weight:600;margin-bottom:20px;text-align:center}
+    .chart-row{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+    .chart-label{width:170px;font-size:12px;font-weight:500;color:var(--text-secondary);text-align:right;flex-shrink:0}
+    .chart-track{flex:1;height:24px;background:var(--bg-primary);border-radius:4px;overflow:hidden}
+    .chart-fill{height:100%;border-radius:4px;width:0;transition:width 1.4s ease;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:10px;font-weight:600;color:#fff;font-family:'JetBrains Mono',monospace}
+    .chart-fill.lonly-fill{background:var(--accent)}
+    .chart-fill.normal-fill{background:#d1d4dc}
+    .chart-legend{display:flex;justify-content:center;gap:24px;margin-top:16px}
+    .chart-legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)}
+    .chart-legend-dot{width:10px;height:10px;border-radius:2px}
+    .chart-legend-dot.lonly-dot{background:var(--accent)}
+    .chart-legend-dot.normal-dot{background:#d1d4dc}
+
+    .why-matters{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:36px}
+    .why-card{
+      background:var(--bg-card);border:1px solid var(--border);
+      border-radius:var(--radius-sm);padding:20px;text-align:center;transition:var(--transition);
+    }
+    .why-card:hover{background:var(--bg-card-hover)}
+    .why-card h5{font-size:14px;font-weight:600;margin-bottom:6px}
+    .why-card p{font-size:12px;color:var(--text-secondary);line-height:1.5}
+
+    .terminal-block{background:#f0f1f5;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px}
+    .terminal-header{display:flex;align-items:center;gap:6px;padding:8px 14px;background:#e8e9ef;border-bottom:1px solid var(--border)}
+    .terminal-dot{width:8px;height:8px;border-radius:50%}
+    .terminal-dot.red{background:#ff5f56}
+    .terminal-dot.yellow{background:#ffbd2e}
+    .terminal-dot.green{background:#27c93f}
+    .terminal-title{font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;margin-left:4px}
+    .terminal-body{padding:14px;overflow-x:auto;position:relative}
+    .terminal-body pre{font-family:'JetBrains Mono',monospace;font-size:12px;color:#4a4a5e;white-space:pre;line-height:1.5}
+    .terminal-body pre .comment{color:#8a8a9e}
+    .terminal-body pre .cmd{color:var(--accent)}
+    .copy-btn{
+      position:absolute;top:6px;right:6px;
+      background:rgba(0,0,0,0.03);border:1px solid var(--border);
+      color:var(--text-muted);padding:4px 10px;border-radius:4px;
+      font-size:10px;cursor:pointer;transition:var(--transition);
+      font-family:'Inter',sans-serif;
+    }
+    .copy-btn:hover{background:rgba(0,0,0,0.06);color:var(--text-primary)}
+    .copy-btn.copied{background:rgba(99,102,241,0.1);color:var(--accent);border-color:rgba(99,102,241,0.2)}
+
+    .requirements-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+    .req-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:22px}
+    .req-card h4{font-size:14px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:6px}
+    .req-card ul{list-style:none}
+    .req-card li{padding:5px 0;font-size:12px;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;position:relative;padding-left:14px}
+    .req-card li::before{content:'-';position:absolute;left:0;color:var(--accent)}
+
+    footer{padding:48px 0;border-top:1px solid var(--border);text-align:center}
+    footer .ascii-footer{font-family:'JetBrains Mono',monospace;font-size:8px;line-height:1.3;color:var(--text-primary);white-space:pre;margin-bottom:10px;opacity:0.4}
+    footer p{color:var(--text-muted);font-size:12px;margin-bottom:3px}
+    footer .footer-links{display:flex;justify-content:center;gap:14px;margin:16px 0}
+    footer .footer-links a{color:var(--text-muted);text-decoration:none;font-size:12px;transition:var(--transition)}
+    footer .footer-links a:hover{color:var(--text-primary)}
+    footer .disclaimer-reminder{font-size:10px;color:var(--text-muted);max-width:520px;margin:14px auto 0;padding:10px;border:1px solid var(--border);border-radius:6px;opacity:0.6}
+
+    @media(max-width:1024px){
+      .hero-content{grid-template-columns:1fr;gap:36px}
+      .hero h1{font-size:38px}
+      .hero-visual{order:-1}
+      .ascii-avatar{font-size:7px}
+      .overview-grid{grid-template-columns:1fr}
+    }
+    @media(max-width:768px){
+      .nav-links{display:none;position:absolute;top:60px;left:0;right:0;background:rgba(255,255,255,0.98);flex-direction:column;padding:12px;border-bottom:1px solid var(--border);backdrop-filter:blur(16px)}
+      .nav-links.open{display:flex}
+      .nav-links a{padding:10px 14px;width:100%}
+      .nav-toggle{display:block}
+      .hero h1{font-size:30px}
+      .section-title{font-size:26px}
+      .features-grid{grid-template-columns:1fr}
+      .comparison-table td{padding:10px 8px;font-size:12px}
+      .bar-container{width:70px}
+      .chart-row{flex-direction:column;align-items:stretch;gap:3px}
+      .chart-label{width:100%;text-align:left;font-size:11px}
+      .methodology-box ul{grid-template-columns:1fr}
+      .requirements-grid{grid-template-columns:1fr}
+      .tech-grid{grid-template-columns:1fr}
+      .why-matters{grid-template-columns:1fr 1fr}
+    }
+    @media(max-width:480px){
+      .hero h1{font-size:24px}
+      .hero-cta{flex-direction:column}
+      .btn{justify-content:center}
+      .why-matters{grid-template-columns:1fr}
+    }
+    @media(prefers-reduced-motion:reduce){
+      *,*::before,*::after{animation-duration:0.01ms!important;transition-duration:0.01ms!important}
+    }
+  </style>
+</head>
+<body>
+<nav id="navbar">
+  <div class="container">
+    <a href="#" class="logo"><span class="ascii-nav">.-. .---. .-..-. .-. .-.   .-..-.</span>LONLY</a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">☰</button>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#tools">Tools</a></li>
+      <li><a href="#comparison">Comparison</a></li>
+      <li><a href="#install">Install</a></li>
+      <li><a href="https://github.com/poppp334/Lonly_HARNESS" target="_blank" class="github-link">GitHub <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg></a></li>
+    </ul>
+  </div>
+</nav>
+
+<section class="hero" id="hero">
+  <div class="container">
+    <div class="hero-content">
+      <div class="hero-text">
+        <div class="hero-badge"><span class="pulse"></span> v1.0 · Autonomous Pentesting Agent</div>
+        <h1><span class="accent">LONLY</span>.<br>HARNESS</h1>
+        <p class="tagline" id="typing"></p>
+        <p class="desc">
+          An autonomous AI-powered penetration testing agent for Kali Linux, powered by a local LLM via Ollama.
+          The <strong>LONLY HARNESS</strong> wraps 24 industry-standard Kali tools into a unified ReAct-driven interface
+          — intelligently planning and executing multi-phase security assessments from reconnaissance through exploitation.
+        </p>
+        <div class="hero-cta">
+          <a href="https://github.com/poppp334/Lonly_HARNESS" target="_blank" class="btn btn-primary">View on GitHub</a>
+          <a href="#overview" class="btn btn-secondary">Documentation</a>
+          <a href="#install" class="btn btn-ghost">Quick Start</a>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="ascii-avatar">
+        ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣤⣤⣤⣤⣄⣀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⠶⣻⠝⠋⠠⠔⠛⠁⡀⠀⠈⢉⡙⠓⠶⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠞⢋⣴⡮⠓⠋⠀⠀⢄⠀⠀⠉⠢⣄⠀⠈⠁⠀⡀⠙⢶⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠞⢁⣔⠟⠁⠀⠀⠀⠀⠀⠈⡆⠀⠀⠀⠈⢦⡀⠀⠀⠘⢯⢢⠙⢦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡼⠃⠀⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠸⠀⠀⠀⠀⠀⢳⣦⡀⠀⠀⢯⠀⠈⣷⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⠆⡄⢠⢧⠀⣸⠀⠀⠀⠀⠀⠀⠀⢰⠀⣄⠀⠀⠀⠀⢳⡈⢶⡦⣿⣷⣿⢉⣷⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⣯⣿⣁⡟⠈⠣⡇⠀⠀⢸⠀⠀⠀⠀⢸⡄⠘⡄⠀⠀⠀⠈⢿⢾⣿⣾⢾⠙⠻⣾⣧⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡿⣮⠇⢙⠷⢄⣸⡗⡆⠀⢘⠀⠀⠀⠀⢸⠧⠀⢣⠀⠀⠀⡀⡸⣿⣿⠘⡎⢆⠈⢳⣽⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⢠⡟⢻⢷⣄⠀⠀⠀⠀⠀⣾⣳⡿⡸⢀⣿⠀⠀⢸⠙⠁⠀⠼⠀⠀⠀⠀⢸⣇⠠⡼⡤⠴⢋⣽⣱⢿⣧⠀⢳⠈⢧⠀⢻⣿⣧⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⢀⡿⣠⡣⠃⣿⠃⠀⠀⠀⣸⣳⣿⠇⣇⢸⣿⢸⣠⠼⠀⠀⠀⡇⠀⡀⠉⠒⣾⢾⣆⢟⣳⡶⠓⠶⠿⢼⣿⣇⠈⡇⠘⢆⠈⢿⡘⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠈⢷⣍⣤⡶⣿⡄⠀⠀⢠⣿⠃⣿⠀⡏⢸⣿⣿⠀⢸⠀⠀⢠⡗⢀⠇⠀⢠⡟⠀⠻⣾⣿⠀⠀⠀⠀⡏⣿⣿⡀⢹⡀⠈⢦⠈⢷⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠈⢁⣤⣄⠁⠀⠀⣼⡏⢰⣟⠀⣇⠘⣿⣿⣾⣾⣆⢀⣾⠃⣼⢠⣶⣿⣭⣷⣶⣾⣿⣤⠀⠀⠀⡇⡯⣍⣧⠀⣷⠄⠈⢳⡀⢻⡁⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠺⣿⡿⠀⠀⠀⡿⢀⣾⣧⠀⡗⡄⢿⣿⡙⣽⣿⣟⠛⠚⠛⠙⠉⢹⣿⣿⣦⠀⢸⡿⠀⠀⠀⢰⡯⣌⢻⡀⢸⢠⢰⡄⠹⡷⣿⣦⣤⠤⣶⡇⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠀⠀⣇⣾⣿⢸⢠⣧⢧⠘⣿⡇⠸⣿⢿⡆⠀⠀⠀⠀⠘⣯⠇⣿⠂⣸⢰⠀⠀⢀⣸⡧⣊⣼⡇⢸⣼⣸⣷⢣⢻⣄⠉⠙⠛⠉⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣳⣤⣴⣿⣏⣿⣾⢸⣿⡘⣧⣘⢿⣀⡙⣞⠁⠀⠀⠀⠀⢀⡬⢀⣉⢠⣧⡏⠀⠀⡎⣿⣿⣿⣿⠃⣸⡏⣿⣿⡎⢿⡘⡆⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠉⣠⣼⣿⣿⣿⣼⣿⣧⢿⣿⣿⣯⡻⠟⠀⠀⠀⠀⠀⠐⢯⠣⡽⢟⣽⠀⠀⢘⡇⣿⣿⣿⡟⣴⣿⣷⣿⣿⣧⣿⣷⡽⠀⠀⠀⠀⠀⠀
+⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣼⣹⣿⣇⣸⣿⣿⣿⣻⣚⣿⡿⣿⣿⣦⣤⣀⡉⠃⠀⢀⣀⣤⡶⠛⡏⠀⢀⣼⢸⣿⣿⣿⣿⣿⣿⣿⢋⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀
+⣿⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠒⠒⠒⢭⢻⣽⣿⣿⣿⣿⣿⣿⢿⠿⣿⡏⠀⡼⠁⣀⣾⣿⣿⣿⣿⡿⣿⣿⣟⡻⣿⣿⡿⠣⠟⠀⠀⠀⠀⠀⠀
+⠸⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢧⢿⣯⡽⠿⠛⠋⣵⢟⣋⣿⣶⣞⣤⣾⣿⣿⡟⢉⡿⢋⠻⢯⡉⢻⡟⢿⡅⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⢻⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⡞⣿⣆⡀⠀⡼⡏⠉⠚⠭⢉⣠⠬⠛⠛⢁⡴⣫⠖⠁⠀⠀⣩⠟⠁⣸⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠈⢷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢹⣽⣿⣿⣾⠳⡙⣦⡤⠜⠊⠁⠀⣀⡴⠯⠾⠗⠒⠒⠛⠛⠛⠛⠛⠓⠿⣦⡀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠘⣧⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠰⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢷⣻⣿⣿⠔⢪⠓⠬⢍⠉⣩⣽⢻⣤⣶⣦⠀⠀⠀⢀⣀⣤⣴⣾⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠹⡆⠀⠀⠀⠀⠀⠀⠀⠀⣰⣾⡏⢦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣯⣿⣿⠀⠀⣇⠀⣠⠎⠁⢹⡎⡟⡏⣷⣶⠿⠛⡟⠛⠛⣫⠟⠉⢿⣿⡿⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⢻⡄⠀⠀⠀⠀⠀⠀⠀⠹⣿⣷⠈⢷⡤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢹⣾⣷⡀⣀⣀⣷⡅⠀⠀⠈⣷⢳⡇⣿⠀⠀⣸⠁⢠⡾⣟⣛⣻⣟⡿⣇⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⢷⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢯⢻⣏⡵⠿⠿⢤⣄⠀⢀⣿⢸⣹⣿⣀⣴⣿⣴⣿⣛⠋⠉⠉⡉⠛⣿⣧⡀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠘⣧⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⡎⣿⣥⣶⠖⢉⣿⡿⣿⣿⡿⣿⣟⠿⠿⣿⣿⣿⡯⠻⣿⣿⣿⣷⡽⣿⡗⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠸⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠸⡘⣿⣩⠶⣛⣋⡽⠿⣷⢬⣙⣻⣿⣿⣿⣯⣛⠳⣤⣬⡻⣿⣿⣿⣿⣧⠀⠀⠀⠀⠀
+⠀⣿⣛⣻⣿⡿⠿⠟⠗⠶⠶⠶⠶⠤⠤⢤⠤⡤⢤⣤⣤⣤⣤⣄⣀⣀⣀⣀⣀⣀⣀⣀⣣⢹⣷⣶⣿⣿⣦⣴⣟⣛⣯⣤⣿⣿⣿⣿⣿⣷⣌⣿⣿⣿⣿⣿⣿⣿⣤⣤⣤⣤⣤⣤⣄
+⠀⠉⠙⠛⠛⠛⠛⠛⠻⠿⠿⠿⠷⠶⠶⢶⣶⣶⣶⣶⣤⣤⣤⣤⣤⣥⣬⣭⣭⣉⣩⣍⣙⣏⣉⣏⣽⣶⣶⣶⣤⣤⣬⣤⣤⣾⣿⠶⠾⠿⠿⠿⠿⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠛⠃
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠉⠉⠉⠉⠉⠛⠛⠛⠛⠛⠛⠋⠉⠉⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+ 
+.-.   .----..-..-..-.   .-..-.
+| |__ | || || .` || |__  >  / 
+`----'`----'`-'`-'`----' `-'  </div>
+      </div>
+    </div>
+    <div class="scroll-indicator">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M7 13l5 5 5-5"/><path d="M7 6l5 5 5-5"/></svg>
+    </div>
+  </div>
+</section>
+
+<section id="disclaimer">
+  <div class="container">
+    <div class="disclaimer">
+      <h3>⚠️ LEGAL DISCLAIMER</h3>
+      <p>This tool is intended for <strong>authorized security testing and educational purposes ONLY</strong>. Using LONLY against systems you do not own or have explicit written permission to test is illegal and unethical. The author assumes no liability for misuse of this software. Always obtain proper authorization before conducting any security assessment.</p>
+    </div>
+  </div>
+</section>
+
+<section id="overview">
+  <div class="container">
+    <div class="section-label">Overview</div>
+    <h2 class="section-title">What is LONLY HARNESS?</h2>
+    <p class="section-subtitle">An interactive, autonomous penetration testing AI agent that runs entirely on your local machine.</p>
+    <div class="overview-grid">
+      <div class="overview-text">
+        <p>
+          <strong>LONLY</strong> (Logically Optimized Network Logistics &amp; Intelligence) uses a <strong>ReAct (Reasoning + Acting)</strong> loop
+          powered by a locally-hosted LLM via Ollama to intelligently plan and execute multi-phase security assessments —
+          from reconnaissance through exploitation.
+        </p>
+        <p>
+          It wraps industry-standard Kali Linux tools into a unified AI-driven interface, intelligently deciding which tool to use,
+          and in what order, based on your natural-language objective in English or Thai.
+        </p>
+        <p>
+          The agent maintains a sliding window memory, queries a RAG knowledge base for pentest techniques,
+          performs live CVE lookups, and includes safety controls to block dangerous tools without your explicit permission.
+        </p>
+      </div>
+      <div class="arch-diagram">
+        <pre>
+                        User Input
+                            │
+                            ▼
+              ┌────────────────────────────┐
+              │  Messages = SysPrompt      │
+              │  + ChatHistory             │
+              │  + HumanMessage(input)     │
+              └─────────────┬──────────────┘
+                            │
+                            ▼
+              ┌────────────────────────────┐
+              │   Ollama LLM (gemma4:e4b)  │  ◄────────┐
+              │   llm.invoke(messages)     │           │
+              └─────────────┬──────────────┘           │
+                            │ response                 │
+                            ▼                          │
+              ┌────────────────────────────┐           │
+              │       Final Answer?        │──► return │
+              │  (fabrication/overclaim/   │  (checks) │
+              │   placeholder detection)   │           │
+              └─────────────┬──────────────┘           │
+                            │ No                       │
+                            ▼                          │
+              ┌────────────────────────────┐           │
+              │    Risk Checkpoint ≥ 5?    │──► c/s/r  │
+              └─────────────┬──────────────┘           │
+                            │ No                       │
+                            ▼                          │
+              ┌────────────────────────────┐           │
+              │   parse_react_response     │           │
+              │  (Action + Action Input)   │           │
+              └─────────────┬──────────────┘           │
+                            │                          │
+                            ▼                          │
+              ┌────────────────────────────┐           │
+              │  Safety Controls:          │           │
+              │  · dangerous? → blocked    ├───────────┘
+              │  · confirm? → asked user   ├───────────┘
+              │  · duplicate? → skipped    ├───────────┘
+              │  Tool Execution (24 tools) │           │
+              └─────────────┬──────────────┘           │
+                            │ result                   │
+                            ▼                          │
+              ┌────────────────────────────┐           │
+              │    Observation appended    │───────────┘
+              │  to Messages + risk accum  │  (loop)
+              └─────────────┬──────────────┘
+                            │
+                            │  [max 8 steps exhausted]
+                            ▼
+                   Summarized Findings
+        </pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="techstack">
+  <div class="container">
+    <div class="section-label">Technology Stack</div>
+    <h2 class="section-title">Tech Stack</h2>
+    <p class="section-subtitle">Built with modern AI and security frameworks.</p>
+    <div class="tech-grid">
+      <div class="tech-card" data-tech="langchain"><span class="layer">Orchestration</span><span class="name">LangChain + LangChain-Community + LangChain-Ollama</span><span class="purpose">Agent framework and LLM integration</span><span class="btn-detail">Learn More</span></div>
+      <div class="tech-card" data-tech="ollama"><span class="layer">LLM Backend</span><span class="name">Ollama with gemma4:e4b</span><span class="purpose">Local model serving on Kali Linux</span><span class="btn-detail">Learn More</span></div>
+      <div class="tech-card" data-tech="chromadb"><span class="layer">Vector Database</span><span class="name">ChromaDB + Sentence-Transformers</span><span class="purpose">RAG knowledge base for pentest documentation</span><span class="btn-detail">Learn More</span></div>
+      <div class="tech-card" data-tech="networkx"><span class="layer">Graph Analysis</span><span class="name">NetworkX</span><span class="purpose">BloodHound attack path analysis</span><span class="btn-detail">Learn More</span></div>
+      <div class="tech-card" data-tech="pydantic"><span class="layer">Data Validation</span><span class="name">Pydantic</span><span class="purpose">Schema validation and data modeling</span><span class="btn-detail">Learn More</span></div>
+      <div class="tech-card" data-tech="requests"><span class="layer">HTTP Client</span><span class="name">Requests</span><span class="purpose">NVD API calls for real-time CVE lookup</span><span class="btn-detail">Learn More</span></div>
+      <div class="tech-card" data-tech="huggingface"><span class="layer">Model Hub</span><span class="name">HuggingFace Hub</span><span class="purpose">Model and embedding access</span><span class="btn-detail">Learn More</span></div>
+      <div class="tech-card" data-tech="kali"><span class="layer">Runtime</span><span class="name">Kali Linux · Python 3.10+</span><span class="purpose">Penetration testing environment</span><span class="btn-detail">Learn More</span></div>
+    </div>
+  </div>
+</section>
+
+<div class="modal-overlay" id="techModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <button class="modal-close" id="modalClose" aria-label="Close modal">✕</button>
+    <div class="modal-badge" id="modalBadge"></div>
+    <h2 id="modalTitle"></h2>
+    <p class="subtitle" id="modalSubtitle"></p>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<section id="features">
+  <div class="container">
+    <div class="section-label">Key Features</div>
+    <h2 class="section-title">What Makes LONLY Different</h2>
+    <p class="section-subtitle">Nine core capabilities that transform a bare LLM into an autonomous security agent.</p>
+    <div class="features-grid">
+        <div class="feature-card"><h3>Autonomous ReAct Agent Loop</h3><p>The LLM reasons, selects a tool, observes the output, then decides the next step — with safety checkpoints and user confirmations at critical decision points.</p></div>
+        <div class="feature-card"><h3>Safety Controls</h3><p>Two-tier protection: intrusive tools (SQLMap, Nikto, enum4linux) are automatically blocked with a warning; tools like crackmapexec, hydra, and Metasploit require explicit user confirmation before execution.</p></div>
+      <div class="feature-card"><h3>Natural Language Interface</h3><p>Give objectives in plain English or Thai; the agent handles the technical execution and tool orchestration.</p></div>
+      <div class="feature-card"><h3>RAG Knowledge Base</h3><p>Augments the LLM with a local ChromaDB vector store of penetration testing cheat sheets and documentation.</p></div>
+      <div class="feature-card"><h3>BloodHound Analysis</h3><p>Parses SharpHound collection ZIPs locally using NetworkX to find attack paths to Domain Admins.</p></div>
+      <div class="feature-card"><h3>Live CVE Lookup</h3><p>Queries the NVD API in real time and cross-references results with the local Exploit-DB via SearchSploit.</p></div>
+      <div class="feature-card"><h3>Sliding Window Memory</h3><p>Maintains a rolling chat history (last 20 messages) to preserve context without overflowing the LLM context window.</p></div>
+      <div class="feature-card"><h3>Risk-Budget Checkpoint</h3><p>Tool calls accumulate risk points; when the budget (5 pts) is exceeded, the operator reviews progress and decides to continue, stop, or redirect.</p></div>
+      <div class="feature-card"><h3>Cross-Task Carryover</h3><p>Fabrication/overclaim/placeholder events decay across tasks, preventing degraded LLM behavior from silently compounding.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="tools">
+  <div class="container tools-section">
+    <div class="section-label">Tool Arsenal</div>
+    <h2 class="section-title">24 Integrated Tools</h2>
+    <p class="section-subtitle">Categorized across the full penetration testing lifecycle — from recon to exploitation and analysis.</p>
+
+    <div class="category">
+      <div class="category-title">Reconnaissance &amp; Port Scanning <span class="badge">3 tools</span></div>
+      <table class="tools-table">
+        <thead><tr><th>Tool</th><th>Function</th></tr></thead>
+        <tbody>
+          <tr><td>rustscan_port_scan</td><td>Ultra-fast full-port scan (1–65535) via RustScan</td></tr>
+          <tr><td>masscan_port_scan</td><td>High-speed asynchronous scanning for large CIDR ranges</td></tr>
+          <tr><td>nmap_security_scan</td><td>Detailed service/version/OS detection</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="category">
+      <div class="category-title">Web Application Assessment <span class="badge">7 tools</span></div>
+      <table class="tools-table">
+        <thead><tr><th>Tool</th><th>Function</th></tr></thead>
+        <tbody>
+          <tr><td>whatweb_web_fingerprint</td><td>Identify web technologies and frameworks</td></tr>
+          <tr><td>gobuster_directory_scan</td><td>Brute-force directories and files</td></tr>
+          <tr><td>ffuf_web_fuzz</td><td>Advanced web fuzzing (requires FUZZ keyword in URL)</td></tr>
+          <tr><td>nikto_web_scan</td><td><span class="warning">⚠️</span> Comprehensive web server vulnerability scan (requires permission)</td></tr>
+          <tr><td>sqlmap_vulnerability_assessment</td><td><span class="warning">⚠️</span> Automated SQL injection detection and exploitation (requires permission)</td></tr>
+          <tr><td>wpscan_wordpress_audit</td><td>WordPress plugin, theme, and user enumeration</td></tr>
+          <tr><td>curl_web_request</td><td>Custom HTTP request crafting</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="category">
+      <div class="category-title">Active Directory &amp; Network Services <span class="badge">4 tools</span></div>
+      <table class="tools-table">
+        <thead><tr><th>Tool</th><th>Function</th></tr></thead>
+        <tbody>
+          <tr><td>enum4linux_smb_audit</td><td><span class="warning">⚠️</span> SMB/Samba enumeration (requires permission)</td></tr>
+          <tr><td>crackmapexec</td><td><span class="warning">🔐</span> SMB/SSH/WinRM/MSSQL authentication testing and command execution (requires confirmation)</td></tr>
+          <tr><td>ldap_search_enumeration</td><td>Anonymous/simple-bind LDAP queries against Active Directory</td></tr>
+          <tr><td>kerbrute_active_directory_assessment</td><td>Kerberos user enumeration and password spraying</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="category">
+      <div class="category-title">Exploitation &amp; Post-Exploitation <span class="badge">6 tools</span></div>
+      <table class="tools-table">
+        <thead><tr><th>Tool</th><th>Function</th></tr></thead>
+        <tbody>
+          <tr><td>hydra_brute_force</td><td><span class="warning">🔐</span> Network login brute-force across multiple protocols (requires confirmation)</td></tr>
+          <tr><td>searchsploit_exploit_lookup</td><td>Search local Exploit-DB archive</td></tr>
+          <tr><td>metasploit_auxiliary_scanner</td><td><span class="warning">🔐</span> Execute Metasploit auxiliary modules (requires confirmation)</td></tr>
+          <tr><td>impacket_tool_execute</td><td>Windows/AD assessment via Impacket suite (secretsdump, etc.)</td></tr>
+          <tr><td>reverse_shell_listener</td><td>Set up a Netcat listener for incoming reverse shells</td></tr>
+          <tr><td>linpeas_privilege_escalation_scan</td><td>Local privilege escalation enumeration via LinPEAS</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="category">
+      <div class="category-title">Intelligence &amp; Analysis <span class="badge">4 tools</span></div>
+      <table class="tools-table">
+        <thead><tr><th>Tool</th><th>Function</th></tr></thead>
+        <tbody>
+          <tr><td>cve_lookup</td><td>Real-time CVE details from NVD API + Exploit-DB cross-reference</td></tr>
+          <tr><td>bloodhound_analyze</td><td>Local BloodHound/SharpHound ZIP analysis using NetworkX graph</td></tr>
+          <tr><td>rag_query</td><td>Query internal ChromaDB knowledge base for pentest techniques</td></tr>
+          <tr><td>shell_exec</td><td>Execute arbitrary shell commands on the host</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="comparison" class="comparison-section">
+  <div class="container">
+    <div class="section-label">Performance</div>
+    <h2 class="section-title">LONLY vs. Normal Local LLM</h2>
+    <p class="section-subtitle">A bare LLM lacks structure, tools, memory, and reasoning loops. LONLY&#39;s HARNESS provides the full stack.</p>
+
+    <div class="methodology-box">
+      <h4>Methodology</h4>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Percentages are estimates based on implemented features:</p>
+      <ul>
+        <li>ReAct loop enables autonomous execution → <strong>+100%</strong> task execution</li>
+        <li>RAG reduces hallucinations → <strong>+65%</strong> knowledge accuracy</li>
+        <li>Sliding window memory maintains context → <strong>+80%</strong> context retention</li>
+        <li>24 integrated tools → <strong>+100%</strong> tool utilization</li>
+        <li>Risk-budget checkpoint → <strong>+90%</strong> risk management</li>
+        <li>Autonomous multi-phase assessments → <strong>+70%</strong> overall efficiency</li>
+      </ul>
+    </div>
+
+    <table class="comparison-table">
+      <thead>
+        <tr><th>Metric</th><th>Normal Local LLM</th><th>LONLY HARNESS</th><th>Improvement</th><th>Progress</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="metric">Task Planning &amp; Execution</td>
+          <td class="normal">❌ Cannot execute tools</td>
+          <td class="lonely">✅ Autonomous ReAct loop</td>
+          <td class="improvement">+100%</td>
+          <td><div class="bar-container"><div class="bar-fill" data-width="100"></div></div></td>
+        </tr>
+        <tr>
+          <td class="metric">Context Retention</td>
+          <td class="normal">⚠️ Limited by context window</td>
+          <td class="lonely">✅ Sliding window memory (20 msgs)</td>
+          <td class="improvement">+80%</td>
+          <td><div class="bar-container"><div class="bar-fill" data-width="80"></div></div></td>
+        </tr>
+        <tr>
+          <td class="metric">Knowledge Accuracy</td>
+          <td class="normal">❌ Prone to hallucinations</td>
+          <td class="lonely">✅ RAG with ChromaDB</td>
+          <td class="improvement">+65%</td>
+          <td><div class="bar-container"><div class="bar-fill" data-width="65"></div></div></td>
+        </tr>
+        <tr>
+          <td class="metric">Tool Utilization</td>
+          <td class="normal">❌ 0 tools</td>
+          <td class="lonely">✅ 24 integrated tools</td>
+          <td class="improvement">+100%</td>
+          <td><div class="bar-container"><div class="bar-fill" data-width="100"></div></div></td>
+        </tr>
+        <tr>
+          <td class="metric">Risk Management</td>
+          <td class="normal">❌ No safety controls</td>
+          <td class="lonely">✅ Risk-budget checkpoint</td>
+          <td class="improvement">+90%</td>
+          <td><div class="bar-container"><div class="bar-fill" data-width="90"></div></div></td>
+        </tr>
+        <tr>
+          <td class="metric">Overall Efficiency</td>
+          <td class="normal">⚠️ Manual, slow</td>
+          <td class="lonely">✅ Autonomous multi-phase</td>
+          <td class="improvement">+70%</td>
+          <td><div class="bar-container"><div class="bar-fill" data-width="70"></div></div></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="chart-container">
+      <h4>Performance Comparison Chart</h4>
+      <div class="chart-row">
+        <span class="chart-label">Task Planning &amp; Execution</span>
+        <div class="chart-track"><div class="chart-fill lonly-fill" data-width="100">LONLY</div></div>
+        <div class="chart-track"><div class="chart-fill normal-fill" data-width="10">LLM</div></div>
+      </div>
+      <div class="chart-row">
+        <span class="chart-label">Context Retention</span>
+        <div class="chart-track"><div class="chart-fill lonly-fill" data-width="80">LONLY</div></div>
+        <div class="chart-track"><div class="chart-fill normal-fill" data-width="25">LLM</div></div>
+      </div>
+      <div class="chart-row">
+        <span class="chart-label">Knowledge Accuracy</span>
+        <div class="chart-track"><div class="chart-fill lonly-fill" data-width="65">LONLY</div></div>
+        <div class="chart-track"><div class="chart-fill normal-fill" data-width="20">LLM</div></div>
+      </div>
+      <div class="chart-row">
+        <span class="chart-label">Tool Utilization</span>
+        <div class="chart-track"><div class="chart-fill lonly-fill" data-width="100">LONLY</div></div>
+        <div class="chart-track"><div class="chart-fill normal-fill" data-width="5">LLM</div></div>
+      </div>
+      <div class="chart-row">
+        <span class="chart-label">Risk Management</span>
+        <div class="chart-track"><div class="chart-fill lonly-fill" data-width="90">LONLY</div></div>
+        <div class="chart-track"><div class="chart-fill normal-fill" data-width="5">LLM</div></div>
+      </div>
+      <div class="chart-row">
+        <span class="chart-label">Overall Efficiency</span>
+        <div class="chart-track"><div class="chart-fill lonly-fill" data-width="70">LONLY</div></div>
+        <div class="chart-track"><div class="chart-fill normal-fill" data-width="15">LLM</div></div>
+      </div>
+      <div class="chart-legend">
+        <div class="chart-legend-item"><div class="chart-legend-dot lonly-dot"></div> LONLY HARNESS</div>
+        <div class="chart-legend-item"><div class="chart-legend-dot normal-dot"></div> Normal Local LLM</div>
+      </div>
+    </div>
+
+    <h4 style="font-size:18px;font-weight:700;margin-bottom:24px;text-align:center;">Why It Matters</h4>
+    <div class="why-matters">
+      <div class="why-card"><h5>Time Savings</h5><p>What takes hours manually, LONLY completes autonomously — from recon to exploitation in a single workflow.</p></div>
+      <div class="why-card"><h5>Accuracy</h5><p>RAG reduces false positives and hallucinations by grounding the LLM in a curated pentest knowledge base.</p></div>
+      <div class="why-card"><h5>Safety</h5><p>Risk-budget checkpoint and tool-level permissions prevent dangerous automated actions without oversight.</p></div>
+      <div class="why-card"><h5>Coverage</h5><p>24 tools across 5 categories = comprehensive assessment in one integrated, AI-driven workflow.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="container">
+    <div class="section-label">Getting Started</div>
+    <h2 class="section-title">Installation &amp; Quick Start</h2>
+    <p class="section-subtitle">Get LONLY running on your Kali Linux machine in minutes.</p>
+
+    <h4 style="font-size:15px;font-weight:600;margin-bottom:12px;">1. Clone the repository</h4>
+    <div class="terminal-block">
+      <div class="terminal-header">
+        <span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span>
+        <span class="terminal-title">bash</span>
+      </div>
+      <div class="terminal-body">
+        <button class="copy-btn" data-copy="git clone https://github.com/poppp334/Lonly_HARNESS.git && cd lonly-pentest-agent">Copy</button>
+        <pre><span class="cmd">$</span> git clone https://github.com/poppp334/Lonly_HARNESS.git
+<span class="cmd">$</span> <span style="color:#888">cd</span> lonly-pentest-agent</pre>
+      </div>
+    </div>
+
+    <h4 style="font-size:15px;font-weight:600;margin-bottom:12px;">2. Install Python dependencies</h4>
+    <div class="terminal-block">
+      <div class="terminal-header">
+        <span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span>
+        <span class="terminal-title">bash</span>
+      </div>
+      <div class="terminal-body">
+        <button class="copy-btn" data-copy="pip install -r requirements.txt">Copy</button>
+        <pre><span class="cmd">$</span> pip install -r requirements.txt</pre>
+      </div>
+    </div>
+
+    <h4 style="font-size:15px;font-weight:600;margin-bottom:12px;">3. Pull the LLM model via Ollama</h4>
+    <div class="terminal-block">
+      <div class="terminal-header">
+        <span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span>
+        <span class="terminal-title">bash</span>
+      </div>
+      <div class="terminal-body">
+        <button class="copy-btn" data-copy="ollama pull gemma4:e4b">Copy</button>
+        <pre><span class="cmd">$</span> ollama pull gemma4:e4b</pre>
+      </div>
+    </div>
+
+    <h4 style="font-size:15px;font-weight:600;margin-bottom:12px;">4. (Optional) Set up the RAG knowledge base</h4>
+    <div class="terminal-block">
+      <div class="terminal-header">
+        <span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span>
+        <span class="terminal-title">bash</span>
+      </div>
+      <div class="terminal-body">
+        <button class="copy-btn" data-copy="python ingest_knowledge.py">Copy</button>
+        <pre><span class="comment"># Place your pentest cheat sheets / markdown files in the knowledge/ folder</span>
+<span class="comment"># Then run the ingestion script</span>
+<span class="cmd">$</span> python ingest_knowledge.py</pre>
+      </div>
+    </div>
+
+    <h4 style="font-size:15px;font-weight:600;margin-bottom:12px;">5. Run LONLY</h4>
+    <div class="terminal-block">
+      <div class="terminal-header">
+        <span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span>
+        <span class="terminal-title">bash</span>
+      </div>
+      <div class="terminal-body">
+        <button class="copy-btn" data-copy="python pentest_agent.py">Copy</button>
+        <pre><span class="cmd">$</span> python pentest_agent.py</pre>
+      </div>
+    </div>
+
+    <div style="margin-top:48px">
+      <h2 class="section-title" style="font-size:24px">System Requirements</h2>
+      <div class="requirements-grid">
+        <div class="req-card">
+          <h4>System</h4>
+          <ul>
+            <li>Kali Linux (recommended) or Debian-based distro</li>
+            <li>Python 3.10+</li>
+            <li>Ollama with gemma4:e4b model</li>
+            <li>8GB+ RAM recommended</li>
+          </ul>
+        </div>
+        <div class="req-card">
+          <h4>Kali Tools (in PATH)</h4>
+          <ul>
+            <li>nmap, rustscan, masscan</li>
+            <li>nikto, sqlmap, gobuster, ffuf</li>
+            <li>whatweb, wpscan, enum4linux</li>
+            <li>crackmapexec, hydra, kerbrute</li>
+            <li>ldap-utils, metasploit-framework</li>
+            <li>impacket-scripts, searchsploit</li>
+            <li>netcat, linpeas (peass-ng)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div class="ascii-footer">.-.   .----..-..-..-.   .-..-.
+| |__ | || || .` || |__  >  / 
+`----'`----'`-'`-'`----' `-'  </div>
+    <p>Logically Optimized Network Logistics &amp; Intelligence</p>
+    <div class="footer-links">
+      <a href="https://github.com/poppp334/Lonly_HARNESS" target="_blank">GitHub</a>
+      <a href="#overview">Documentation</a>
+      <a href="#install">Install</a>
+      <a href="#features">Features</a>
+      <a href="#tools">Tools</a>
+    </div>
+    <p style="color:var(--text-muted);font-size:13px;">Built for the security community</p>
+    <div class="disclaimer-reminder">
+      ⚠️ This tool is intended for authorized security testing and educational purposes only.
+      The author assumes no liability for misuse. Use responsibly.
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  const nav = document.getElementById('navbar');
+  const toggle = document.getElementById('navToggle');
+  const links = document.getElementById('navLinks');
+
+  toggle.addEventListener('click',()=>{links.classList.toggle('open')});
+  links.querySelectorAll('a').forEach(a=>{a.addEventListener('click',()=>{links.classList.remove('open')})});
+  window.addEventListener('scroll',()=>{nav.classList.toggle('scrolled',window.scrollY>50)});
+
+  const typingEl = document.getElementById('typing');
+  const phrases = [
+    'Logically Optimized Network Logistics & Intelligence',
+    'Autonomous AI-powered penetration testing agent',
+    '24 integrated Kali tools · ReAct loop · RAG knowledge',
+    'Natural language interface · Safety controls · Live CVE lookup'
+  ];
+  let phraseIdx=0, charIdx=0, isDeleting=false;
+  function typeEffect(){
+    const current=phrases[phraseIdx];
+    if(!isDeleting){
+      typingEl.textContent=current.substring(0,charIdx+1);
+      charIdx++;
+      if(charIdx===current.length){setTimeout(()=>{isDeleting=true;typeEffect()},2000);return}
+    }else{
+      typingEl.textContent=current.substring(0,charIdx-1);
+      charIdx--;
+      if(charIdx===0){isDeleting=false;phraseIdx=(phraseIdx+1)%phrases.length}
+    }
+    setTimeout(typeEffect,isDeleting?30:60);
+  }
+  typeEffect();
+
+  function animateBars(){
+    document.querySelectorAll('.bar-fill[data-width]').forEach(bar=>{
+      const w=bar.getAttribute('data-width');
+      bar.style.width=w+'%';
+    });
+    document.querySelectorAll('.chart-fill[data-width]').forEach(bar=>{
+      const w=bar.getAttribute('data-width');
+      bar.style.width=w+'%';
+    });
+  }
+
+  const observer=new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{if(entry.isIntersecting){animateBars();observer.disconnect()}});
+  },{threshold:0.3});
+  const section=document.getElementById('comparison');
+  if(section)observer.observe(section);
+
+  document.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const code=btn.getAttribute('data-copy')||btn.parentElement.querySelector('pre')?.textContent||'';
+      navigator.clipboard.writeText(code).then(()=>{
+        btn.textContent='Copied!';btn.classList.add('copied');
+        setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},2000);
+      }).catch(()=>{
+        btn.textContent='Failed';setTimeout(()=>{btn.textContent='Copy'},1500);
+      });
+    });
+  });
+
+  document.querySelectorAll('a[href^="#"]').forEach(a=>{
+    a.addEventListener('click',e=>{
+      e.preventDefault();
+      const target=document.querySelector(a.getAttribute('href'));
+      if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
+    });
+  });
+
+  const techData={langchain:{badge:'Orchestration',title:'LangChain + LangChain-Community + LangChain-Ollama',subtitle:'Agent framework and LLM integration',body:'<h3>What it is</h3><p>LangChain is a framework for developing applications powered by language models. It provides standardised interfaces for chains, agents, and tools, making it easy to build complex LLM workflows. The <code>langchain-community</code> package offers integrations with third‑party services, and <code>langchain-ollama</code> specifically connects LangChain to locally running Ollama models.</p><h3>How LONLY uses it</h3><ul><li>The <strong>ReAct agent</strong> (<code>run_react_agent</code>) is constructed as a <strong>custom loop</strong> — <code>run_react_agent</code> builds a messages list, invokes the LLM, parses responses, dispatches tools, and injects observations itself (no LangChain <code>AgentExecutor</code>).</li><li>The agent receives a system prompt, a list of tool definitions (the 24 Kali tools), and a chat history.</li><li>LangChain provides message types (<code>SystemMessage</code>, <code>HumanMessage</code>, <code>AIMessage</code>), the <code>@tool</code> decorator, and <code>ChatOllama</code> — but the agent loop is fully custom.</li><li>The <code>langchain-ollama</code> chat model is instantiated to communicate with the <code>gemma4:e4b</code> model running on Ollama.</li></ul><h3>Why it was chosen</h3><ul><li><strong>Flexibility</strong> – easily swap LLM backends (Ollama, OpenAI, etc.) without rewriting the core logic.</li><li><strong>Full control</strong> – custom loop enables safety checkpoints, risk budgeting, duplicate call detection, and fabrication/overclaim checks.</li><li><strong>Community ecosystem</strong> – seamless integration with vector stores, document loaders, and other utilities.</li></ul><h3>Code snippet</h3><div class="code-block"><span class="cm"># LONLY custom agent loop (simplified)</span>\n<span class="kw">from</span> langchain_ollama <span class="kw">import</span> ChatOllama\n<span class="kw">from</span> langchain_core.tools <span class="kw">import</span> tool\n<span class="kw">from</span> langchain_core.messages <span class="kw">import</span> SystemMessage, HumanMessage, AIMessage\n\nllm = ChatOllama(model=<span class="kw">"gemma4:e4b"</span>, temperature=<span class="kw">0.2</span>, num_ctx=<span class="kw">8192</span>)\nmessages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_input)]\n\n<span class="kw">while</span> step < max_steps:\n    response = llm.invoke(messages)\n    messages.append(AIMessage(content=response.content))\n    <span class="cm"># parse_react_response extracts Action + Action Input</span>\n    tool_name, tool_args = parse_react_response(response.content)\n    <span class="cm"># safety checks, tool execution, observation injection…</span></div><div class="links-box"><a href="https://python.langchain.com/docs/get_started/introduction" target="_blank">LangChain Docs</a><a href="https://python.langchain.com/docs/integrations/llms/ollama" target="_blank">LangChain-Ollama</a></div>'},ollama:{badge:'LLM Backend',title:'Ollama with gemma4:e4b',subtitle:'Local model serving on Kali Linux',body:'<h3>What it is</h3><p>Ollama is a lightweight, cross‑platform tool that lets you run large language models locally. It provides a REST API and a CLI for pulling, managing, and serving quantised models. The <code>gemma4:e4b</code> model is a fine‑tuned variant of Google\'s Gemma‑4, optimised for reasoning and tool‑use tasks.</p><h3>How LONLY uses it</h3><ul><li>The agent sends prompts to Ollama\'s HTTP endpoint (default <code>http://localhost:11434</code>).</li><li>The model is loaded with a <strong>low temperature</strong> (0.2) to produce deterministic, logical outputs.</li><li>The entire conversation history is passed as context, enabling the model to maintain state across iterations.</li></ul><h3>Why it was chosen</h3><ul><li><strong>Privacy</strong> – all data stays on the Kali machine; no internet uploads.</li><li><strong>Performance</strong> – quantised models run efficiently on a consumer GPU/CPU, ideal for pentesting environments.</li><li><strong>Simplicity</strong> – one‑command model pull and seamless integration with LangChain.</li></ul><h3>Code snippet</h3><div class="code-block"><span class="cm"># Pull the model</span>\nollama pull gemma4:e4b\n\n<span class="cm"># Run the server (if not already running)</span>\nollama serve</div><div class="links-box"><a href="https://github.com/ollama/ollama" target="_blank">Ollama GitHub</a><a href="https://ollama.com/library/gemma4" target="_blank">Gemma-4 model page</a></div>'},chromadb:{badge:'Vector Database',title:'ChromaDB + Sentence-Transformers',subtitle:'RAG knowledge base for pentest documentation',body:'<h3>What it is</h3><p>ChromaDB is an open‑source vector database designed for storing and retrieving embeddings. Sentence‑Transformers (e.g., <code>all-MiniLM-L6-v2</code>) are pre‑trained models that convert text into dense vector representations, enabling semantic similarity search.</p><h3>How LONLY uses it</h3><ul><li>The agent builds a <strong>RAG knowledge base</strong> by ingesting pentest cheat sheets, tool documentation, and common exploit strategies.</li><li>Each document chunk is embedded with a Sentence‑Transformer model and stored in ChromaDB.</li><li>When the LLM receives a query, it first performs a similarity search over the vector store to retrieve relevant context, which is then injected into the prompt. This reduces hallucinations and improves answer quality.</li></ul><h3>Why it was chosen</h3><ul><li><strong>Local first</strong> – no external API calls; all embeddings and storage reside on the host.</li><li><strong>Lightweight</strong> – ChromaDB runs in‑memory or persisted to disk with minimal overhead.</li><li><strong>LangChain integration</strong> – <code>Chroma</code> and <code>SentenceTransformerEmbeddings</code> are natively supported.</li></ul><h3>Code snippet</h3><div class="code-block"><span class="kw">from</span> langchain_community.vectorstores <span class="kw">import</span> Chroma\n<span class="kw">from</span> langchain_community.embeddings <span class="kw">import</span> HuggingFaceEmbeddings\n\nembeddings = HuggingFaceEmbeddings(model_name=<span class="kw">"all-MiniLM-L6-v2"</span>)\nvectorstore = Chroma(persist_directory=<span class="kw">"./chroma_db"</span>, embedding_function=embeddings)\nretriever = vectorstore.as_retriever()</div><div class="links-box"><a href="https://docs.trychroma.com/" target="_blank">ChromaDB Docs</a><a href="https://www.sbert.net/" target="_blank">Sentence-Transformers</a></div>'},networkx:{badge:'Graph Analysis',title:'NetworkX',subtitle:'BloodHound attack path analysis',body:'<h3>What it is</h3><p>NetworkX is a Python library for the creation, manipulation, and study of complex networks (graphs). It provides algorithms for pathfinding, centrality, clustering, and graph visualisation.</p><h3>How LONLY uses it</h3><ul><li>When BloodHound (SharpHound) collection ZIPs are provided, LONLY parses them locally and builds a directed graph of Active Directory objects (users, groups, computers, OUs).</li><li>It then runs <strong>shortest‑path</strong> algorithms to identify attack paths from a given user to high‑value targets (e.g., Domain Admins).</li><li>The results are returned as a textual summary or as JSON for further analysis.</li></ul><h3>Why it was chosen</h3><ul><li><strong>No external services</strong> – all analysis stays on the Kali machine, preserving operational security.</li><li><strong>Rich algorithm set</strong> – supports all necessary graph metrics for AD attack‑path discovery.</li><li><strong>Lightweight</strong> – pure Python, no additional dependencies beyond NumPy.</li></ul><h3>Code snippet</h3><div class="code-block"><span class="kw">import</span> networkx <span class="kw">as</span> nx\n\n<span class="cm"># Build graph from BloodHound data (simplified)</span>\nG = nx.DiGraph()\n<span class="cm"># ... add edges from relationships ...</span>\n<span class="kw">try</span>:\n    path = nx.shortest_path(G, source=<span class="kw">"user@domain.local"</span>, target=<span class="kw">"DA@domain.local"</span>)\n<span class="kw">except</span> nx.NetworkXNoPath:\n    path = None</div><div class="links-box"><a href="https://networkx.org/documentation/stable/" target="_blank">NetworkX Docs</a></div>'},pydantic:{badge:'Data Validation',title:'Pydantic',subtitle:'Schema validation and data modeling',body:'<h3>What it is</h3><p>Pydantic is a data‑validation library that uses Python type hints to enforce data schemas. It provides runtime type checking, parsing, and serialisation.</p><h3>How LONLY uses it</h3><ul><li>All tool inputs and outputs are validated against Pydantic models to ensure correctness before they are passed to the LLM or executed.</li><li>For example, the <code>nmap_security_scan</code> tool expects a <code>target</code> (string) and optional <code>ports</code> (list[int]). Pydantic ensures these fields are present and of the correct type.</li><li>This prevents malformed data from breaking the agent loop or causing security issues.</li></ul><h3>Why it was chosen</h3><ul><li><strong>Type safety</strong> – catches errors early in the agent chain.</li><li><strong>Auto‑generated JSON schemas</strong> – useful for tool definitions that are passed to the LLM.</li><li><strong>Lightweight</strong> and fast, with minimal overhead.</li></ul><h3>Code snippet</h3><div class="code-block"><span class="kw">from</span> pydantic <span class="kw">import</span> BaseModel, Field\n\n<span class="kw">class</span> NmapScanInput(BaseModel):\n    target: str = Field(..., description=<span class="kw">"IP address or hostname"</span>)\n    ports: list[int] = Field(default=[], description=<span class="kw">"List of ports to scan"</span>)\n\n<span class="cm"># In the tool definition:</span>\n<span class="kw">def</span> nmap_scan(input_str: str) -> str:\n    parsed = NmapScanInput.model_validate_json(input_str)\n    <span class="cm"># ... execute nmap ...</span></div><div class="links-box"><a href="https://docs.pydantic.dev/" target="_blank">Pydantic Docs</a></div>'},requests:{badge:'HTTP Client',title:'Requests',subtitle:'NVD API calls for real-time CVE lookup',body:'<h3>What it is</h3><p>The <code>requests</code> library is the de‑facto standard for making HTTP requests in Python. It handles sessions, authentication, timeouts, and response parsing.</p><h3>How LONLY uses it</h3><ul><li><strong>Live CVE Lookup</strong> – queries the NVD (National Vulnerability Database) REST API to retrieve up‑to‑date CVE details, CVSS scores, and references.</li><li><strong>SearchSploit integration</strong> – uses requests to interact with the local Exploit‑DB API or to fetch remote exploit data when needed.</li><li><strong>Custom web requests</strong> – the <code>curl_web_request</code> tool wraps <code>requests</code> to perform arbitrary HTTP requests during web assessments.</li></ul><h3>Why it was chosen</h3><ul><li><strong>Simplicity</strong> – clean API, widely used, and well‑documented.</li><li><strong>Reliability</strong> – handles redirects, proxies, and SSL verification out‑of‑the‑box.</li><li><strong>Performance</strong> – non‑blocking calls with timeouts to avoid hanging the agent.</li></ul><h3>Code snippet</h3><div class="code-block"><span class="kw">import</span> requests\n\nresponse = requests.get(\n    <span class="kw">"https://services.nvd.nist.gov/rest/json/cves/2.0"</span>,\n    params={<span class="kw">"cveId"</span>: <span class="kw">"CVE-2023-1234"</span>},\n    timeout=<span class="kw">10</span>\n)\n<span class="kw">if</span> response.status_code == <span class="kw">200</span>:\n    data = response.json()</div><div class="links-box"><a href="https://docs.python-requests.org/" target="_blank">Requests Docs</a></div>'},huggingface:{badge:'Model Hub',title:'HuggingFace Hub',subtitle:'Model and embedding access',body:'<h3>What it is</h3><p>The HuggingFace Hub is a platform hosting thousands of machine learning models, datasets, and demos. The <code>huggingface_hub</code> Python library provides an interface to download models, manage repositories, and access token‑based authentication.</p><h3>How LONLY uses it</h3><ul><li><strong>Embedding models</strong> – the Sentence‑Transformer embeddings are pulled from the Hub (e.g., <code>sentence-transformers/all-MiniLM-L6-v2</code>).</li><li><strong>Future expansion</strong> – could be used to download other models (e.g., for specific NLP tasks) or to fine‑tune on domain‑specific data.</li></ul><h3>Why it was chosen</h3><ul><li><strong>Centralised access</strong> – easy to discover and download pre‑trained models.</li><li><strong>Versioning</strong> – ensures reproducible builds by pinning specific model revisions.</li><li><strong>Community</strong> – vast selection of open‑source models for various tasks.</li></ul><h3>Code snippet</h3><div class="code-block"><span class="kw">from</span> huggingface_hub <span class="kw">import</span> snapshot_download\n\n<span class="cm"># Download a specific embedding model (if not already cached)</span>\nsnapshot_download(repo_id=<span class="kw">"sentence-transformers/all-MiniLM-L6-v2"</span>, local_dir=<span class="kw">"./models"</span>)</div><div class="links-box"><a href="https://huggingface.co/docs/hub/index" target="_blank">HuggingFace Hub Docs</a></div>'},kali:{badge:'Runtime',title:'Kali Linux · Python 3.10+',subtitle:'Penetration testing environment',body:'<h3>What it is</h3><p>Kali Linux is a Debian‑based distribution pre‑packaged with hundreds of security tools. Python 3.10+ provides the execution environment for the agent code, with support for modern language features like pattern matching and type hints.</p><h3>How LONLY uses it</h3><ul><li>All 24 tools (nmap, sqlmap, rustscan, etc.) are expected to be installed in <code>/usr/bin/</code> and accessible via subprocess calls.</li><li>Python 3.10+ is used for its async capabilities, improved error handling, and compatibility with the latest LangChain versions.</li><li>The agent runs on the local machine, ensuring that all scans originate from the test system itself.</li></ul><h3>Why it was chosen</h3><ul><li><strong>Standard environment</strong> for penetration testing – most practitioners already use Kali.</li><li><strong>Tool availability</strong> – all required tools are pre‑installed or can be added via <code>apt</code>.</li><li><strong>Python ecosystem</strong> – mature package management and extensive library support.</li></ul><h3>Code snippet</h3><div class="code-block"><span class="kw">import</span> subprocess\n<span class="kw">import</span> sys\n\n<span class="kw">if</span> sys.version_info < (<span class="kw">3</span>, <span class="kw">10</span>):\n    <span class="kw">raise</span> RuntimeError(<span class="kw">"Python 3.10+ required"</span>)\n\n<span class="cm"># Check if a tool exists</span>\n<span class="kw">def</span> tool_installed(name: str) -> bool:\n    <span class="kw">return</span> subprocess.call([<span class="kw">"which"</span>, name], stdout=subprocess.DEVNULL) == <span class="kw">0</span></div><div class="links-box"><a href="https://www.kali.org/" target="_blank">Kali Linux</a><a href="https://docs.python.org/3/whatsnew/3.10.html" target="_blank">Python 3.10+</a></div>'}};
+
+  const modalOverlay=document.getElementById('techModal');
+  const modalClose=document.getElementById('modalClose');
+  const modalBadge=document.getElementById('modalBadge');
+  const modalTitle=document.getElementById('modalTitle');
+  const modalSubtitle=document.getElementById('modalSubtitle');
+  const modalBody=document.getElementById('modalBody');
+
+  function openModal(key){
+    const data=techData[key];
+    if(!data)return;
+    modalBadge.textContent=data.badge;
+    modalTitle.textContent=data.title;
+    modalSubtitle.textContent=data.subtitle;
+    modalBody.innerHTML=data.body;
+    modalOverlay.classList.add('active');
+    document.body.style.overflow='hidden';
+  }
+
+  function closeModal(){
+    modalOverlay.classList.remove('active');
+    document.body.style.overflow='';
+  }
+
+  modalClose.addEventListener('click',closeModal);
+  modalOverlay.addEventListener('click',e=>{if(e.target===modalOverlay)closeModal()});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&modalOverlay.classList.contains('active'))closeModal()});
+
+  document.querySelectorAll('.tech-card').forEach(card=>{
+    card.addEventListener('click',()=>{
+      const key=card.dataset.tech;
+      if(key)openModal(key);
+    });
+  });
+})();
+</script>
+</body>
+</html>

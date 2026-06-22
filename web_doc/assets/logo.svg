@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" width="400" height="120">
+  <defs>
+    <linearGradient id="redGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff3333;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#cc0000;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="greenAccent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00ff41;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00cc33;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#ff3333" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <!-- Shield background -->
+  <rect x="10" y="15" width="90" height="90" rx="12" fill="none" stroke="url(#redGlow)" stroke-width="2.5" filter="url(#glow)"/>
+  <polygon points="55,20 82,35 82,65 55,95 28,65 28,35" fill="none" stroke="#ff3333" stroke-width="1.5" opacity="0.3"/>
+  <!-- Lock icon inside shield -->
+  <rect x="45" y="48" width="20" height="16" rx="3" fill="none" stroke="#00ff41" stroke-width="2"/>
+  <path d="M48,48 V42 a7,7 0 0 1 14,0 v6" fill="none" stroke="#00ff41" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="55" cy="56" r="2.5" fill="#00ff41"/>
+  <!-- Terminal cursor blink -->
+  <rect x="52" y="60" width="6" height="2" fill="#00ff41" opacity="0.8">
+    <animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.5s" repeatCount="indefinite"/>
+  </rect>
+  <!-- LONLY text -->
+  <text x="115" y="55" font-family="'Courier New', monospace" font-size="44" font-weight="900" fill="url(#redGlow)" filter="url(#shadow)" letter-spacing="3">LONLY</text>
+  <!-- Subtitle -->
+  <text x="117" y="82" font-family="'Courier New', monospace" font-size="11" fill="#888" letter-spacing="2">LOGICALLY OPTIMIZED NETWORK LOGISTICS &amp; INTELLIGENCE</text>
+  <!-- Decorative line -->
+  <line x1="115" y1="90" x2="380" y2="90" stroke="#333" stroke-width="0.5"/>
+  <!-- Version tag -->
+  <text x="117" y="104" font-family="'Courier New', monospace" font-size="10" fill="#ff3333">v1.0</text>
+  <text x="145" y="104" font-family="'Courier New', monospace" font-size="10" fill="#555">| AI-Powered Pentesting Agent</text>
+</svg>

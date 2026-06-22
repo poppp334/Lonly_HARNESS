@@ -114,3 +114,34 @@
   - Files touched: pentest_agent.py (globals, new function, checkpoint print, 3 risk increment points).
 
 - Updated README.md: added risk-budget checkpoint config docs, updated project structure (AGENTS.md, UPDATE.md, ingest_knowledge.py, knowledge/), replaced forced summarization with risk-budget checkpoint feature description, added checkpoint usage docs with c/s/r prompt example, fixed clone URL.
+
+## 2026-06-21 (later)
+- Created `web_doc/` folder with production-grade documentation webpage for LONLY HARNESS:
+  - `web_doc/index.html` — single-file webpage with embedded CSS/JS: hero section with typing animation, legal disclaimer, overview with architecture diagram, tech stack grid, 9 glass-morphism feature cards, 24-tool arsenal in categorized tables, animated performance comparison (table + chart bars + methodology), installation terminal blocks with copy buttons, system requirements, footer
+  - `web_doc/assets/logo.svg` — LONLY vector logo with shield, lock, terminal cursor animation
+  - `web_doc/README.md` — documentation page readme
+  - Design: dark theme, red (#ff3333) + matrix green (#00ff41) accents, glass-morphism cards, responsive, accessible
+- Replaced SVG logo with ASCII art avatar across `web_doc/index.html`:
+  - Hero visual: large ASCII skull/robot art with matrix-green glow + red `.` text accent logo
+  - Navbar: compact ASCII logo `.-. .---. .-..-. .-. .-.   .-..-.` next to "LONLY."
+  - Footer: full 3-line ASCII logo replacing "LONLY."
+  - Removed `hero-logo` CSS class, added `.ascii-avatar` and `.ascii-avatar-small` styles with neon text-shadow effects
+- Complete theme redesign: red/green "hacker" aesthetic → clean professional indigo (#6366f1) enterprise theme:
+  - Removed all matrix-green (#00ff41), red (#ff3333), neon glows, noise overlay, gradient background
+  - New color palette: dark bg (#0b0b0f), card (#14141a), indigo accent (#6366f1), muted text (#90909e)
+  - Replaced glass-morphism with solid minimal cards with subtle borders
+  - Clean buttons (primary indigo, ghost/secondary outline) with no heavy shadows
+  - ASCII art colors changed to muted (#3a3a4a) with no glow for subtlety
+  - Terminal blocks: dark (#0d0d12) with indigo prompt instead of green
+  - Simplified nav, hero, footer spacing and typography
+  - Removed `.matrix`, `.dot`, `.noise`, `.gradient-bg`, `.glass-bg`, `.glass-border` CSS
+- Brightened theme for readability (light mode)
+- Fixed architecture diagram in `web_doc/index.html` to match actual `pentest_agent.py` code flow: added Messages data structure (SysPrompt + ChatHistory + HumanMessage), safety controls (dangerous/confirm/duplicate checks before tool execution), Final Answer post-processing (fabrication/overclaim/placeholder detection), risk checkpoint (≥5 pause for c/s/r), and max-steps exhaustion → summarized findings. Removed inaccurate bidirectional "Ollama LLM ↔ System Prompt + Chat History" box.
+- Fixed 5 inaccuracies found during full website audit against `pentest_agent.py`:
+  1. Feature "Autonomous ReAct Agent Loop" — removed "all without manual intervention", added mention of checkpoints/confirmations
+  2. Feature "Safety Controls" — corrected to describe two-tier system (dangerous blocked, confirm-required prompted)
+  3. Tool table — added 🔐 (requires confirmation) markers to crackmapexec, hydra_brute_force, metasploit_auxiliary_scanner
+  4. Tech modal LangChain — replaced AgentExecutor/create_react_agent claims with correct custom loop description; fixed code snippet
+  5. Tech modal Ollama — fixed temperature from 0.1 to 0.2
+- Removed all decorative emojis from website for cleaner professional look: feature card icons (🧠🛡️🌐📚🩸🔍🧠📊⚖️), tool category headers (🔍🌐🏢💥🧪), why-matters cards (⏱️🎯🛡️📡), methodology (📐), system reqs (🖥🔧), and footer heart (❤️). Removed unused `.icon` CSS classes for both `.feature-card` and `.why-card`. Kept functional emojis: ⚠️ (warning), 🔐 (confirmation required), and ✕ (modal close).
+- Added interactive detail modal for Tech Stack section (`web_doc/index.html`): each of the 8 tech cards is now clickable with `data-tech` attribute, opens a slide-in right panel with backdrop blur. Modal contains full description, LONLY usage, benefits, code snippet, and external links. CSS: `.modal-overlay`, `.modal`, `.btn-detail` with smooth slide animation. JS: `techData` object with all content, open/close handlers, Escape key support.: bg #0b0b0f→#f8f9fc, text #e8e8ed→#1a1a2e, card #14141a→#ffffff, border #1e1e28→#e2e4ea, nav bg transparent with white backdrop, terminal blocks light grey (#f0f1f5) with dark text, chart normal-fill changed to light grey (#d1d4dc), ascii-avatar opacity reduced for subtlety on light background. Mobile nav dropdown background changed to white.
