@@ -123,6 +123,13 @@
 - Fixed README.md checkpoint example: `nmap_port_scan` → `nmap_security_scan` (tool name did not exist in code)
 - Fixed README.md architecture diagram: added Messages layer, safety controls (dangerous/confirm/duplicate gates), risk checkpoint, Final Answer post-processing (placeholder/fabrication/overclaim detection), and max-steps exhaustion path
 - Fixed README.md usage workflow: updated "ask permission before intrusive scans" → "ask permission before intrusive/confirm-required tools" to match two-tier safety system
+- Fixed README.md Feature 1 ("all without manual intervention" → "with human-in-the-loop checkpoints")
+- Fixed README.md Feature 2 (one-tier → two-tier safety controls description)
+- Added 6 new features to README.md: Fabrication Detection, Overclaim Detection, Placeholder Detection, Duplicate Prevention, Session Logging, Tool Failure Detection
+- Added `langchain-core` and `ollama` to Python deps in README.md
+- Added `kerbrute`, `impacket-scripts` to apt install command; added notes for `searchsploit`/`linpeas`
+- Fixed stale line reference in Config section ("near the top" → "line 526")
+- Added `.gitignore` to project structure tree
 
 - Created `web_doc/` folder with production-grade documentation webpage for LONLY HARNESS:
   - `web_doc/index.html` — single-file webpage with embedded CSS/JS: hero section with typing animation, legal disclaimer, overview with architecture diagram, tech stack grid, 9 glass-morphism feature cards, 24-tool arsenal in categorized tables, animated performance comparison (table + chart bars + methodology), installation terminal blocks with copy buttons, system requirements, footer

@@ -28,8 +28,8 @@ It wraps industry-standard Kali Linux tools into a unified AI-driven interface, 
 
 ## ✨ Key Features
 
-- 🧠 **Autonomous ReAct Agent Loop** — The LLM reasons, selects a tool, observes the output, then decides the next step, all without manual intervention
-- 🛡️ **Safety Controls** — Intrusive tools (SQLMap, Nikto, enum4linux) require explicit user permission before execution
+- 🧠 **Autonomous ReAct Agent Loop** — The LLM reasons, selects a tool, observes the output, then decides the next step, with human-in-the-loop checkpoints for risk and safety
+- 🛡️ **Safety Controls** — Two-tier gate: dangerous tools (SQLMap, Nikto, enum4linux) are blocked without permission; confirm-required tools (crackmapexec, hydra, metasploit) prompt y/n before execution
 - 🗣️ **Natural Language Interface** — Give objectives in plain English or Thai; the agent handles the technical execution
 - 📚 **RAG Knowledge Base** — Augments the LLM with a local ChromaDB vector store of penetration testing cheat sheets and documentation
 - 🩸 **BloodHound Analysis** — Parses SharpHound collection ZIPs locally using NetworkX to find attack paths to Domain Admins
@@ -37,6 +37,12 @@ It wraps industry-standard Kali Linux tools into a unified AI-driven interface, 
 - 🪟 **Sliding Window Memory** — Maintains a rolling chat history (last 20 messages) to preserve context without overflowing the LLM context window
 - 🔄 **Risk-Budget Checkpoint** — Tool calls accumulate risk points; when the budget (5 pts) is exceeded, the operator reviews progress and decides to continue, stop, or redirect the task
 - ⚖️ **Cross-Task Carryover** — Fabrication/overclaim/placeholder events decay across tasks (full previous task, half two tasks ago, expired after three), preventing degraded LLM behavior from silently compounding
+- 🚨 **Fabrication Detection** — Scans Final Answer for tool names never actually invoked, with suggestion-context exemption to reduce false positives
+- 📊 **Overclaim Detection** — Checks if the answer claims positive findings from a tool whose raw output contained none (currently registered for metasploit_auxiliary_scanner)
+- 📝 **Placeholder Answer Detection** — Catches when the LLM copies format examples instead of writing real content, with one automatic retry
+- 🔁 **Duplicate Call Prevention** — Blocks re-execution of identical (tool, args) pairs within a session
+- 🪵 **Session Logging** — Every tool call and Final Answer is logged to `session_log.jsonl` with full raw output for auditability
+- 💥 **Tool Failure Detection** — Shell errors, timeouts, and command-not-found results are flagged as failures so the LLM cannot mistake them for real findings
 
 ---
 
@@ -160,8 +166,8 @@ User Input (Natural Language)
 
 ### Python Dependencies
 ```bash
-pip install langchain langchain-community langchain-ollama
-pip install chromadb sentence-transformers
+pip install langchain langchain-core langchain-community langchain-ollama
+pip install ollama chromadb sentence-transformers
 pip install networkx pydantic requests
 pip install huggingface-hub
 ```
@@ -177,9 +183,11 @@ searchsploit, netcat, linpeas (peass-ng)
 Install common tools:
 ```bash
 sudo apt update && sudo apt install -y nmap rustscan masscan nikto sqlmap \
-  gobuster ffuf whatweb wpscan enum4linux crackmapexec hydra \
-  ldap-utils metasploit-framework netcat-traditional
+  gobuster ffuf whatweb wpscan enum4linux crackmapexec hydra kerbrute \
+  ldap-utils metasploit-framework impacket-scripts netcat-traditional
 ```
+Note: `searchsploit` comes with the `exploitdb` package (`sudo apt install exploitdb`);
+`linpeas` comes with `peass-ng` (`sudo apt install peass-ng`).
 
 ---
 
@@ -263,7 +271,7 @@ When the risk budget is reached, LONLY pauses and shows a detailed breakdown:
 ## 🔧 Configuration
 
 ### LLM Model
-Edit `llm = ChatOllama(...)` near the top of `pentest_agent.py`:
+Edit `llm = ChatOllama(...)` at line 526 of `pentest_agent.py`:
 ```python
 llm = ChatOllama(model="gemma4:e4b", temperature=0.2, num_ctx=8192)
 ```
@@ -290,6 +298,7 @@ lonly-pentest-agent/
 ├── AGENTS.md             # Agent configuration guide for opencode / AI assistants
 ├── UPDATE.md             # Changelog tracking all modifications
 ├── requirements.txt      # Python dependencies
+├── .gitignore            # Ignores __pycache__, chroma_db/, session_log.jsonl
 └── README.md
 ```
 
