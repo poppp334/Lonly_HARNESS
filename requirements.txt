@@ -6,9 +6,6 @@ langchain-core
 langchain-community
 langchain-ollama
 
-# LLM Backend (local via Ollama)
-ollama
-
 # Vector Store & Embeddings (RAG)
 chromadb
 sentence-transformers

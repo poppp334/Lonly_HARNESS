@@ -167,7 +167,7 @@ User Input (Natural Language)
 ### Python Dependencies
 ```bash
 pip install langchain langchain-core langchain-community langchain-ollama
-pip install ollama chromadb sentence-transformers
+pip install chromadb sentence-transformers
 pip install networkx pydantic requests
 pip install huggingface-hub
 ```
@@ -283,7 +283,7 @@ The checkpoint system is tuned via named constants in `pentest_agent.py`:
 - `RISK_POINTS` dict — per-event values: `regular_tool=1`, `confirm_required_tool=2`, `dangerous_tool_blocked=1`, `fabrication/overclaim/placeholder=3`
 
 ### Safety Controls
-Intrusive tools (`sqlmap`, `nikto`, `enum4linux`) are blocked by default at line ~920 without operator permission. Tools requiring explicit confirmation (`crackmapexec`, `hydra`, `metasploit_auxiliary_scanner`) prompt `[y/n]` before execution.
+Intrusive tools (`sqlmap`, `nikto`, `enum4linux`) are blocked by default at line 920 without operator permission. Tools requiring explicit confirmation (`crackmapexec`, `hydra`, `metasploit_auxiliary_scanner`) prompt `[y/n]` before execution.
 
 ---
 
@@ -299,6 +299,7 @@ lonly-pentest-agent/
 ├── UPDATE.md             # Changelog tracking all modifications
 ├── requirements.txt      # Python dependencies
 ├── .gitignore            # Ignores __pycache__, chroma_db/, session_log.jsonl
+├── .python-version       # Pins Python 3.10 for pyenv/uv users
 └── README.md
 ```
 
@@ -309,7 +310,7 @@ lonly-pentest-agent/
 Contributions are welcome! Ideas for improvement:
 - Add more tools (e.g., `nuclei`, `feroxbuster`, `evil-winrm`)
 - Build a proper document ingestion pipeline for the RAG knowledge base
-- Add session logging / report generation
+- Enhance report generation / export findings as PDF or HTML
 - Web UI frontend
 - Multi-target campaign management
 

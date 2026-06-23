@@ -130,6 +130,11 @@
 - Added `kerbrute`, `impacket-scripts` to apt install command; added notes for `searchsploit`/`linpeas`
 - Fixed stale line reference in Config section ("near the top" → "line 526")
 - Added `.gitignore` to project structure tree
+- Removed unused `ollama` pip package from `requirements.txt` and README Python deps (never imported anywhere in code)
+- Fixed Contributing section: replaced stale "Add session logging / report generation" with "Enhance report generation / export findings as PDF or HTML"
+- Fixed Safety Controls line reference: `~920` → `920`
+- Added `.python-version` file targeting Python 3.10
+- Added `.python-version` to project structure tree in README
 
 - Created `web_doc/` folder with production-grade documentation webpage for LONLY HARNESS:
   - `web_doc/index.html` — single-file webpage with embedded CSS/JS: hero section with typing animation, legal disclaimer, overview with architecture diagram, tech stack grid, 9 glass-morphism feature cards, 24-tool arsenal in categorized tables, animated performance comparison (table + chart bars + methodology), installation terminal blocks with copy buttons, system requirements, footer
