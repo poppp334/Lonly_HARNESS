@@ -1,5 +1,8 @@
 # Change Log
 
+## 2026-06-22
+- Rewrote AGENTS.md: fixed all stale line numbers (~650→1112), removed pact.py reference (deleted), removed forced-summarization claim (replaced by risk checkpoint), corrected all line references to match current code, added overclaim/placeholder/duplicate detection quirks, added style conventions section, compacted throughout
+
 ## 2026-06-21
 - Created AGENTS.md with repo guide for future OpenCode sessions
 - Added setup, architecture, LLM config, RAG, safety controls, agent loop quirks, dependencies, and README inaccuracy sections
@@ -116,6 +119,11 @@
 - Updated README.md: added risk-budget checkpoint config docs, updated project structure (AGENTS.md, UPDATE.md, ingest_knowledge.py, knowledge/), replaced forced summarization with risk-budget checkpoint feature description, added checkpoint usage docs with c/s/r prompt example, fixed clone URL.
 
 ## 2026-06-21 (later)
+## 2026-06-23
+- Fixed README.md checkpoint example: `nmap_port_scan` → `nmap_security_scan` (tool name did not exist in code)
+- Fixed README.md architecture diagram: added Messages layer, safety controls (dangerous/confirm/duplicate gates), risk checkpoint, Final Answer post-processing (placeholder/fabrication/overclaim detection), and max-steps exhaustion path
+- Fixed README.md usage workflow: updated "ask permission before intrusive scans" → "ask permission before intrusive/confirm-required tools" to match two-tier safety system
+
 - Created `web_doc/` folder with production-grade documentation webpage for LONLY HARNESS:
   - `web_doc/index.html` — single-file webpage with embedded CSS/JS: hero section with typing animation, legal disclaimer, overview with architecture diagram, tech stack grid, 9 glass-morphism feature cards, 24-tool arsenal in categorized tables, animated performance comparison (table + chart bars + methodology), installation terminal blocks with copy buttons, system requirements, footer
   - `web_doc/assets/logo.svg` — LONLY vector logo with shield, lock, terminal cursor animation

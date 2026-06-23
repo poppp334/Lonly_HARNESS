@@ -96,32 +96,57 @@ LONLY integrates **24 tools** covering the full penetration testing lifecycle:
 User Input (Natural Language)
         │
         ▼
-┌─────────────────────┐
-│    ReAct Agent Loop │
-│   (run_react_agent) │
-└────────┬────────────┘
-         │
-         ▼
-  ┌─────────────┐      ┌──────────────────────┐
-  │  Ollama LLM │◄────►│   System Prompt +    │
-  │  (gemma4)   │      │   Chat History       │
-  └──────┬──────┘      └──────────────────────┘
-         │  Thought → Action → Action Input
-         ▼
-  ┌─────────────┐
-  │  Tool Map   │ (parse_react_response)
-  │  Dispatcher │
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────────────────────────────────┐
-  │  Tool Execution (24 Tools)              │
-  │  Nmap / RustScan / SQLMap / Hydra / ... │
-  └──────────────────────┬──────────────────┘
-                         │ Observation
-                         ▼
-                  Back to LLM Loop
-                  (until Final Answer)
+┌────────────────────────────────────┐
+│  Messages: SysPrompt + History +   │
+│            HumanMessage            │
+└──────────────┬─────────────────────┘
+               │
+               ▼
+┌──────────────────────┐
+│    Ollama LLM        │
+│    (gemma4)          │
+└──────┬───────────────┘
+       │  Thought → Action → Action Input
+       ▼
+┌──────────────────────┐
+│  parse_react_response│
+└──────┬───────────────┘
+       │
+       ▼
+┌──────────────────────────────────────────────┐
+│  Safety Controls                             │
+│  • Dangerous tools → blocked (needs OK)      │
+│  • Confirm tools → y/n prompt                │
+│  • Duplicate calls → blocked                 │
+└──────────────────┬───────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────┐
+│  Tool Execution (24 Tools)                   │
+│  Nmap / RustScan / SQLMap / Hydra / ...     │
+└──────────────────┬───────────────────────────┘
+                   │ Observation + risk score
+                   ▼
+┌──────────────────────────────────────────────┐
+│  Risk Checkpoint (≥5 → pause for c/s/r)     │
+└──────────────────┬───────────────────────────┘
+                   │
+                   ▼
+            ┌───────────┐
+            │ More      │ yes ────► back to LLM
+            │ steps?    │
+            └─────┬─────┘
+                  │ no
+                  ▼
+┌──────────────────────────────────────────────┐
+│  Final Answer Post-Processing                │
+│  • Placeholder detection & retry             │
+│  • Fabrication detection (unused tools)      │
+│  • Overclaim detection (no real findings)    │
+└──────────────────┬───────────────────────────┘
+                   │
+                   ▼
+            Final Answer to User
 ```
 
 ---
@@ -202,7 +227,7 @@ LONLY will autonomously:
 1. Run RustScan for initial port discovery
 2. Run Nmap for service/version detection on discovered ports
 3. Run WhatWeb for web technology fingerprinting
-4. Present a summary and **ask your permission** before running any intrusive scans
+4. Present a summary, then ask your permission before running intrusive/confirm-required tools
 
 ### Example Commands
 ```
@@ -225,7 +250,7 @@ When the risk budget is reached, LONLY pauses and shows a detailed breakdown:
 === Task 2 — Checkpoint (risk 5/5) ===
   Carryover: 3 pts [task 1: fabrication = 3 full]
   In-task:   2 pts [1 regular + 1 confirm required tool]
-  In-task tools: nmap_port_scan, rustscan_port_scan
+  In-task tools: nmap_security_scan, rustscan_port_scan
   Total:     5 >= 5 — paused for operator review.
 [c]ontinue / [s]top task / [r]edirect:
 ```
