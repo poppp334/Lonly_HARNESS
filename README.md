@@ -1,4 +1,4 @@
-# 🤖 LONLY — Logically Optimized Network Logistics & Intelligence
+# LONLY — Logically Optimized Network Logistics & Intelligence
 
 > **An autonomous AI-powered penetration testing agent for Kali Linux, powered by a local LLM via Ollama.**
 
@@ -10,7 +10,7 @@
 
 ---
 
-## ⚠️ Legal Disclaimer
+## Legal Disclaimer
 
 > **This tool is intended for authorized security testing and educational purposes ONLY.**
 > Using LONLY against systems you do not own or have explicit written permission to test is illegal and unethical.
@@ -18,7 +18,7 @@
 
 ---
 
-## 📖 Overview
+## Overview
 
 LONLY is an interactive, autonomous penetration testing AI agent that runs entirely on your local machine. It uses a **ReAct (Reasoning + Acting)** loop powered by a locally-hosted LLM via [Ollama](https://ollama.ai/) to intelligently plan and execute multi-phase security assessments — from reconnaissance through exploitation.
 
@@ -26,57 +26,57 @@ It wraps industry-standard Kali Linux tools into a unified AI-driven interface, 
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-- 🧠 **Autonomous ReAct Agent Loop** — The LLM reasons, selects a tool, observes the output, then decides the next step, with human-in-the-loop checkpoints for risk and safety
-- 🛡️ **Safety Controls** — Two-tier gate: dangerous tools (SQLMap, Nikto, enum4linux) are blocked without permission; confirm-required tools (crackmapexec, hydra, metasploit) prompt y/n before execution
-- 🗣️ **Natural Language Interface** — Give objectives in plain English or Thai; the agent handles the technical execution
-- 📚 **RAG Knowledge Base** — Augments the LLM with a local ChromaDB vector store of penetration testing cheat sheets and documentation
-- 🩸 **BloodHound Analysis** — Parses SharpHound collection ZIPs locally using NetworkX to find attack paths to Domain Admins
-- 🔍 **Live CVE Lookup** — Queries the NVD API in real time and cross-references results with the local Exploit-DB via SearchSploit
-- 🪟 **Sliding Window Memory** — Maintains a rolling chat history (last 20 messages) to preserve context without overflowing the LLM context window
-- 🔄 **Risk-Budget Checkpoint** — Tool calls accumulate risk points; when the budget (5 pts) is exceeded, the operator reviews progress and decides to continue, stop, or redirect the task
-- ⚖️ **Cross-Task Carryover** — Fabrication/overclaim/placeholder events decay across tasks (full previous task, half two tasks ago, expired after three), preventing degraded LLM behavior from silently compounding
-- 🚨 **Fabrication Detection** — Scans Final Answer for tool names never actually invoked, with suggestion-context exemption to reduce false positives
-- 📊 **Overclaim Detection** — Checks if the answer claims positive findings from a tool whose raw output contained none (currently registered for metasploit_auxiliary_scanner)
-- 📝 **Placeholder Answer Detection** — Catches when the LLM copies format examples instead of writing real content, with one automatic retry
-- 🔁 **Duplicate Call Prevention** — Blocks re-execution of identical (tool, args) pairs within a session
-- 🪵 **Session Logging** — Every tool call and Final Answer is logged to `session_log.jsonl` with full raw output for auditability
-- 💥 **Tool Failure Detection** — Shell errors, timeouts, and command-not-found results are flagged as failures so the LLM cannot mistake them for real findings
+- **Autonomous ReAct Agent Loop** — The LLM reasons, selects a tool, observes the output, then decides the next step, with human-in-the-loop checkpoints for risk and safety
+- **Safety Controls** — Two-tier gate: dangerous tools (SQLMap, Nikto, enum4linux) are blocked without permission; confirm-required tools (crackmapexec, hydra, metasploit) prompt y/n before execution
+- **Natural Language Interface** — Give objectives in plain English or Thai; the agent handles the technical execution
+- **RAG Knowledge Base** — Augments the LLM with a local ChromaDB vector store of penetration testing cheat sheets and documentation
+- **BloodHound Analysis** — Parses SharpHound collection ZIPs locally using NetworkX to find attack paths to Domain Admins
+- **Live CVE Lookup** — Queries the NVD API in real time and cross-references results with the local Exploit-DB via SearchSploit
+- **Sliding Window Memory** — Maintains a rolling chat history (last 20 messages) to preserve context without overflowing the LLM context window
+- **Risk-Budget Checkpoint** — Tool calls accumulate risk points; when the budget (5 pts) is exceeded, the operator reviews progress and decides to continue, stop, or redirect the task
+- **Cross-Task Carryover** — Fabrication/overclaim/placeholder events decay across tasks (full previous task, half two tasks ago, expired after three), preventing degraded LLM behavior from silently compounding
+- **Fabrication Detection** — Scans Final Answer for tool names never actually invoked, with suggestion-context exemption to reduce false positives
+- **Overclaim Detection** — Checks if the answer claims positive findings from a tool whose raw output contained none (currently registered for metasploit_auxiliary_scanner)
+- **Placeholder Answer Detection** — Catches when the LLM copies format examples instead of writing real content, with one automatic retry
+- **Duplicate Call Prevention** — Blocks re-execution of identical (tool, args) pairs within a session
+- **Session Logging** — Every tool call and Final Answer is logged to `session_log.jsonl` with full raw output for auditability
+- **Tool Failure Detection** — Shell errors, timeouts, and command-not-found results are flagged as failures so the LLM cannot mistake them for real findings
 
 ---
 
-## 🛠️ Tool Arsenal
+## Tool Arsenal
 
 LONLY integrates **24 tools** covering the full penetration testing lifecycle:
 
-### 🔍 Reconnaissance & Port Scanning
+### Reconnaissance & Port Scanning
 | Tool | Function |
 |---|---|
 | `rustscan_port_scan` | Ultra-fast full-port scan (1–65535) via RustScan |
 | `masscan_port_scan` | High-speed asynchronous scanning for large CIDR ranges |
 | `nmap_security_scan` | Detailed service/version/OS detection |
 
-### 🌐 Web Application Assessment
+### Web Application Assessment
 | Tool | Function |
 |---|---|
 | `whatweb_web_fingerprint` | Identify web technologies and frameworks |
 | `gobuster_directory_scan` | Brute-force directories and files |
 | `ffuf_web_fuzz` | Advanced web fuzzing (requires `FUZZ` keyword in URL) |
-| `nikto_web_scan` | ⚠️ Comprehensive web server vulnerability scan (requires permission) |
-| `sqlmap_vulnerability_assessment` | ⚠️ Automated SQL injection detection and exploitation (requires permission) |
+| `nikto_web_scan` | Comprehensive web server vulnerability scan (requires permission) |
+| `sqlmap_vulnerability_assessment` | Automated SQL injection detection and exploitation (requires permission) |
 | `wpscan_wordpress_audit` | WordPress plugin, theme, and user enumeration |
 | `curl_web_request` | Custom HTTP request crafting |
 
-### 🏢 Active Directory & Network Services
+### Active Directory & Network Services
 | Tool | Function |
 |---|---|
-| `enum4linux_smb_audit` | ⚠️ SMB/Samba enumeration (requires permission) |
+| `enum4linux_smb_audit` | SMB/Samba enumeration (requires permission) |
 | `crackmapexec` | SMB/SSH/WinRM/MSSQL authentication testing and command execution |
 | `ldap_search_enumeration` | Anonymous/simple-bind LDAP queries against Active Directory |
 | `kerbrute_active_directory_assessment` | Kerberos user enumeration and password spraying |
 
-### 💥 Exploitation & Post-Exploitation
+### Exploitation & Post-Exploitation
 | Tool | Function |
 |---|---|
 | `hydra_brute_force` | Network login brute-force across multiple protocols |
@@ -86,7 +86,7 @@ LONLY integrates **24 tools** covering the full penetration testing lifecycle:
 | `reverse_shell_listener` | Set up a Netcat listener for incoming reverse shells |
 | `linpeas_privilege_escalation_scan` | Local privilege escalation enumeration via LinPEAS |
 
-### 🧪 Intelligence & Analysis
+### Intelligence & Analysis
 | Tool | Function |
 |---|---|
 | `cve_lookup` | Real-time CVE details from NVD API + Exploit-DB cross-reference |
@@ -96,7 +96,7 @@ LONLY integrates **24 tools** covering the full penetration testing lifecycle:
 
 ---
 
-## ⚙️ Architecture
+## Architecture
 
 ```
 User Input (Natural Language)
@@ -157,7 +157,7 @@ User Input (Natural Language)
 
 ---
 
-## 📋 Requirements
+## Requirements
 
 ### System
 - Kali Linux (recommended) or any Debian-based distro with pentest tools installed
@@ -191,7 +191,7 @@ Note: `searchsploit` comes with the `exploitdb` package (`sudo apt install explo
 
 ---
 
-## 🚀 Installation & Setup
+## Installation & Setup
 
 1. **Clone the repository**
 ```bash
@@ -223,7 +223,7 @@ python pentest_agent.py
 
 ---
 
-## 💻 Usage
+## Usage
 
 After launching, you'll be greeted by the LONLY banner and an interactive prompt:
 
@@ -268,7 +268,7 @@ When the risk budget is reached, LONLY pauses and shows a detailed breakdown:
 
 ---
 
-## 🔧 Configuration
+## Configuration
 
 ### LLM Model
 Edit `llm = ChatOllama(...)` at line 526 of `pentest_agent.py`:
@@ -287,7 +287,7 @@ Intrusive tools (`sqlmap`, `nikto`, `enum4linux`) are blocked by default at line
 
 ---
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 lonly-pentest-agent/
@@ -305,7 +305,7 @@ lonly-pentest-agent/
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Ideas for improvement:
 - Add more tools (e.g., `nuclei`, `feroxbuster`, `evil-winrm`)

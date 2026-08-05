@@ -1,5 +1,8 @@
 # Change Log
 
+## 2026-08-05
+- Removed all emoji from README.md (headings, feature bullets, table cells) for plain-text compatibility; collapsed leftover double spaces after headings/bullets/table separators
+
 ## 2026-06-22
 - Rewrote AGENTS.md: fixed all stale line numbers (~650→1112), removed pact.py reference (deleted), removed forced-summarization claim (replaced by risk checkpoint), corrected all line references to match current code, added overclaim/placeholder/duplicate detection quirks, added style conventions section, compacted throughout
 
