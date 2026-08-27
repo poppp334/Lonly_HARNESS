@@ -186,14 +186,44 @@ pip install -r requirements.txt
 ollama pull gemma3:4b
 ```
 
-### 4. Run Acceptance Tests
-```bash
-python eval/eval_lonly.py
-```
+## Evaluation & Adversarial Hardening Suite
 
-### 5. Launch LONLY
+LONLY v2 enforces zero technical debt and 100% deterministic safety verified by **80 acceptance checks** across 8 tracks:
+
+- **Track D (1–20)**: Safety, Scope, Confirmation, State & Phase Invariants
+- **Track P (1–9)**: ReAct, Markdown Fence, Evidence & Overclaim Interception
+- **Track M (1–3)**: Tool Arsenal Registry, Schema & Isolation Contracts
+- **Track C (1–4)**: Trajectory Quality, Duplication & Truncation Bounds
+- **Track A (1–3)**: Scenario Replays (Web Recon, Privesc Specialist, 5-Phase Chain)
+- **Track E (1–5)**: Live CLI Resilience, Unicode & Human-in-the-Loop Approval
+- **Track R (1–35)**: Comprehensive Red Team Adversarial & Cryptographic Suite:
+  - `R1–R5`: Shell injection, CIDR IPv6, URL spoofing & specialist broker isolation
+  - `R6–R8`: SecretVault token opaque references, zeroization & credential redaction
+  - `R9–R16`: SHA-256 DAG evidence graph & tamper detection
+  - `R17`: Subprocess isolation static invariant (`shell=True` / `os.system` eliminated)
+  - `R18`: Authoritative `CapabilityPolicy` security manifests & approval exit code `126`
+  - `R19`: `ResolvedTarget` DNS rebinding & canonical socket authorization
+  - `R20`: SecretVault capability-scoping, rotation & revocation
+  - `R21`: Platform-wide forensic provenance traversal (`get_provenance_trail`)
+  - `R22`: Cryptographic audit ledger with HMAC-SHA256 write-ahead log hash chaining
+  - `R23`: Typed security claims (`TypedClaim`) and general `ClaimVerifier`
+  - `R24`: Deterministic structured fact extraction (`StructuredFactExtractor`)
+  - `R25`: OS sandbox profiles and process tree termination (`SandboxManager`)
+  - `R26`: First-class engagement model (`Organization`, `Engagement`, `RunRecord`, `ApprovalRecord`)
+  - `R27`: DAG task graph orchestrator (`TaskGraphDAG`)
+  - `R28`: Multi-dimensional risk policy engine (`RiskPolicyEngine`)
+  - `R29`: Property-based fuzzing and zero-bypass invariants (`AdversarialFuzzer`)
+  - `R30`: Operational metrics and zero-defect invariants (`MetricsCollector`)
+  - `R31`: Automated CI/CD security gate (`CISecurityGate`)
+  - `R32`: Lab ground-truth benchmark evaluator (`BenchmarkEvaluator`)
+  - `R33`: Transactional job queue and circuit breaker (`JobQueue`)
+  - `R34`: Distributed tracing and action provenance query (`TelemetryTracer`)
+  - `R35`: Strict model boundary separation (`PlannerRole`, `SpecialistRole`, `VerifierRole`)
+- **Track B (B0)**: Per-tool subprocess smoke validation across all 24 tools
+
 ```bash
-python pentest_agent.py
+# Run complete verification harness
+LONLY_EVAL_PYTHON=~/pentest_env/bin/python ~/pentest_env/bin/python eval/eval_lonly.py
 ```
 
 ---
@@ -203,11 +233,27 @@ python pentest_agent.py
 ```
 Lonly_HARNESS/
 ├── pentest_agent.py          # Main interactive CLI & ReAct agent loop
-├── core/                     # Core runtime subsystems
+├── core/                     # Core runtime & deterministic security boundary
+│   ├── agent_roles.py        # Planner, Specialist, and Verifier model boundaries
+│   ├── audit.py              # Cryptographic HMAC-SHA256 WAL audit ledger
+│   ├── benchmarks.py         # Ground-truth lab benchmark evaluation engine
+│   ├── broker.py             # ExecutionBroker & CapabilityPolicy enforcement
+│   ├── engagement.py         # Organization, Engagement, Run, and Approval entities
+│   ├── evidence.py           # Content-addressable DAG evidence graph & TypedClaims
+│   ├── extractor.py          # Structured fact extractor for prompt context hygiene
+│   ├── fuzz.py               # Property-based adversarial fuzzer
 │   ├── guardrails.py         # Scope control, confirmation gates, risk budgeting
+│   ├── metrics.py            # Operational metrics & zero-defect SLA engine
+│   ├── orchestrator.py       # DAG task graph orchestrator
 │   ├── parser.py             # Resilient ReAct/JSON parsing & overclaim validators
-│   └── state.py              # FindingsLog, TaskTree, phase routing table
-├── tools/                    # Modular 24-tool subsystem
+│   ├── policy.py             # TargetPolicy, CapabilityPolicy, ResolvedTarget
+│   ├── queue.py              # Transactional job queue & circuit breaker
+│   ├── risk.py               # Multi-dimensional risk matrix & decision gates
+│   ├── sandbox.py            # OS sandbox profiles & process containment
+│   ├── state.py              # FindingsLog, TaskTree, phase routing table
+│   ├── telemetry.py          # Distributed tracing & provenance query engine
+│   └── vault.py              # Hardened SecretVault with scoping & rotation
+├── tools/                    # Modular 24-tool subsystem (run_argv brokered)
 │   ├── __init__.py           # Central tool registry and tool_map
 │   ├── base.py               # Safe execution wrapper and output truncation
 │   ├── recon.py              # Nmap, RustScan, Masscan, WhatWeb, Enum4linux, LDAP
@@ -216,17 +262,16 @@ Lonly_HARNESS/
 │   └── infra.py              # LinPEAS, SearchSploit, Impacket, BloodHound, RAG
 ├── models/                   # Specialist integration & training
 │   ├── privesc_protocol.py   # Specialist protocol & Ollama dispatch
-│   ├── smoke_test.py         # Specialist verification smoke test
-│   ├── benchmark_runner.py   # Scenario benchmark runner
-│   ├── analyze_benchmark.py  # Benchmark log and trajectory analyzer
-│   └── sft/                  # Local SFT training & GGUF quantization scripts
+│   └── smoke_test.py         # Specialist verification smoke test
 ├── eval/                     # Test & Evaluation Harness
-│   ├── eval_lonly.py         # Main runner (Tracks D, P, M, C, A, B)
+│   ├── ci_security_gate.py   # Automated CI/CD security gate & invariant checker
+│   ├── eval_lonly.py         # Main acceptance runner (80/80 checks)
 │   ├── track_a_runner.py     # Scenario integration suite
 │   ├── track_b_worker.py     # Subprocess-isolated tool smoke worker
-│   └── track_c_scorer.py     # Trajectory and loop quality scorer
-├── docs/                     # Technical specifications & research
-│   ├── architecture-upgrade-map.md
+│   ├── track_c_scorer.py     # Trajectory and loop quality scorer
+│   └── track_r_redteam.py    # 35-check adversarial red team suite
+├── docs/                     # Technical specifications & roadmap
+│   ├── Plan-implement.md     # Production hardening roadmap
 │   └── cybersecurity-harness-research.md
 ├── requirements.txt          # Python runtime dependencies
 └── README.md
