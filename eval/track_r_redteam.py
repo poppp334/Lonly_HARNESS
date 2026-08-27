@@ -623,9 +623,9 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertTrue(res_hallucinated["metrics"]["hallucination_rate"] > 0)
         self.assertEqual(res_hallucinated["breakdown"]["false_positives"], 1)
 
-    def test_r33_job_queue_and_circuit_breaker_resilience(self):
-        """R33: JobQueue enforces retry limits and trips CircuitBreaker on repeated errors."""
-        from core.queue import CircuitBreaker, CircuitState, JobQueue, JobState
+    def test_r33_transactional_job_queue_and_circuit_breaker(self):
+        """R33: JobQueue ensures retries and CircuitBreaker trips on consecutive failures."""
+        from core.job_queue import CircuitBreaker, CircuitState, JobQueue, JobState
 
         cb = CircuitBreaker(failure_threshold=2, reset_timeout_seconds=5.0)
         jq = JobQueue(circuit_breaker=cb)
