@@ -325,6 +325,31 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertFalse(t3.is_authorized)
         self.assertIn("DNS rebinding protection", t3.rejection_reason)
 
+    def test_r20_secret_vault_rotation_scoping_and_revocation(self):
+        """R20: SecretVault enforces per-capability scoping, rotation, revocation, and zeroization."""
+        from core.vault import SecretVault
+
+        vault = SecretVault()
+        # 1. Scoped credential
+        token = vault.store("Secret123!", label="admin_pwd", allowed_capabilities=["hydra_brute_force"])
+        self.assertTrue(token.startswith("cred_"))
+
+        # Resolving for unauthorized capability returns token unresolved
+        self.assertEqual(vault.resolve(token, capability_id="curl_web_request"), token)
+        # Resolving for authorized capability returns plaintext
+        self.assertEqual(vault.resolve(token, capability_id="hydra_brute_force"), "Secret123!")
+
+        # 2. Secret rotation
+        self.assertTrue(vault.rotate(token, "NewSecret456!"))
+        self.assertEqual(vault.resolve(token, capability_id="hydra_brute_force"), "NewSecret456!")
+
+        # 3. Revocation
+        self.assertTrue(vault.revoke(token))
+        self.assertEqual(vault.resolve(token, capability_id="hydra_brute_force"), token)
+
+        # 4. Audit logging
+        self.assertTrue(len(vault.audit_log) >= 4)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -353,6 +378,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R17 Static analysis subprocess & shell invariant", True, ""),
         ("R18 CapabilityPolicy manifest authorization gates", True, ""),
         ("R19 ResolvedTarget destination validation & rebinding defense", True, ""),
+        ("R20 SecretVault capability scoping rotation & revocation", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
