@@ -598,6 +598,31 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertTrue(gate_result["static_invariants"]["passed"])
         self.assertTrue(gate_result["secret_scanning"]["passed"])
 
+    def test_r32_benchmark_ground_truth_and_hallucination_evaluation(self):
+        """R32: BenchmarkEvaluator computes exact precision, recall, and hallucination rates against lab ground truth."""
+        from core.benchmarks import BenchmarkEvaluator, LINUX_WEB_LAB
+
+        # Perfect run against Linux Web Lab
+        res = BenchmarkEvaluator.evaluate_findings(
+            ground_truth=LINUX_WEB_LAB,
+            discovered_ports={80, 22},
+            discovered_vulnerabilities={"CVE-2021-41773"},
+            discovered_credentials={"admin:Password123!"},
+        )
+        self.assertEqual(res["metrics"]["precision"], 100.0)
+        self.assertEqual(res["metrics"]["recall"], 100.0)
+        self.assertEqual(res["metrics"]["hallucination_rate"], 0.0)
+
+        # Run with 1 hallucinated port
+        res_hallucinated = BenchmarkEvaluator.evaluate_findings(
+            ground_truth=LINUX_WEB_LAB,
+            discovered_ports={80, 22, 3389},  # 3389 is fake
+            discovered_vulnerabilities={"CVE-2021-41773"},
+            discovered_credentials=set(),
+        )
+        self.assertTrue(res_hallucinated["metrics"]["hallucination_rate"] > 0)
+        self.assertEqual(res_hallucinated["breakdown"]["false_positives"], 1)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -638,6 +663,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R29 Property-based fuzzing and zero-bypass invariants", True, ""),
         ("R30 Production metrics and zero security defect invariants", True, ""),
         ("R31 Automated CI/CD security gate and static invariant check", True, ""),
+        ("R32 Benchmark ground truth and hallucination metrics", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
