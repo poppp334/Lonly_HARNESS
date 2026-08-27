@@ -237,3 +237,62 @@ def check_overclaim(
         if has_keyword and not has_negation:
             overclaimed.append(tool_name)
     return overclaimed
+
+
+def extract_explicit_targets_from_text(text: str) -> list[str]:
+    """Deterministically extract explicit targets (URLs, IPs, domain names) from user text."""
+    if not text:
+        return []
+
+    targets = []
+    # 1. Full URLs
+    urls = re.findall(r"https?://([a-zA-Z0-9.-]+)", text, re.IGNORECASE)
+    for u in urls:
+        clean = u.strip().strip("/")
+        if clean and clean not in targets:
+            targets.append(clean)
+
+    # 2. IPv4 / CIDR
+    ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b", text)
+    for ip in ips:
+        if ip not in targets:
+            targets.append(ip)
+
+    # 3. Domain names
+    domains = re.findall(r"\b[a-zA-Z0-9-]+\.(?:com|org|net|io|app|dev|local|lab|internal|edu|gov|co|th|uk|de|fr|info|xyz|me|mu|ai)\b", text, re.IGNORECASE)
+    for d in domains:
+        clean = d.strip().lower()
+        if clean and clean not in targets and not clean.endswith(".py") and not clean.endswith(".md"):
+            targets.append(clean)
+
+    return targets
+
+
+PLACEHOLDER_DOMAINS = {
+    "example.com", "www.example.com", "target", "ip", "http://ip", "https://ip",
+    "http://example.com", "https://example.com", "target_host", "target_ip", "http://target",
+}
+
+
+def sanitize_hallucinated_targets(tool_args: dict[str, Any], explicit_target: Optional[str]) -> dict[str, Any]:
+    """Substitute hallucinated boilerplate domains (e.g. www.example.com) with the user's explicit target."""
+    if not explicit_target or not isinstance(tool_args, dict):
+        return tool_args
+
+    clean_target = explicit_target.split("://")[-1].split("/")[0].split(":")[0].strip()
+    sanitized = dict(tool_args)
+
+    for k, v in sanitized.items():
+        if isinstance(v, str):
+            v_lower = v.strip().lower()
+            v_host = v_lower.split("://")[-1].split("/")[0].split(":")[0].strip()
+
+            if v_lower in PLACEHOLDER_DOMAINS or v_host in PLACEHOLDER_DOMAINS:
+                if k in ("target_url", "url"):
+                    scheme = "https://" if "https" in v_lower else "http://"
+                    sanitized[k] = f"{scheme}{clean_target}"
+                elif k in ("target", "target_host", "target_ip", "host", "rhosts", "domain"):
+                    sanitized[k] = clean_target
+
+    return sanitized
+

@@ -751,6 +751,23 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertIn("Hello!", greeting_res)
         self.assertIn("LONLY", greeting_res)
 
+    def test_r37_target_anchor_extraction_and_hallucination_sanitization(self):
+        """R37: Explicit user target URLs are extracted and placeholder domains (www.example.com) are sanitized."""
+        from core.parser import extract_explicit_targets_from_text, sanitize_hallucinated_targets
+
+        multiline_prompt = "can you do recon on this website\n  https://webme-mu.vercel.app/"
+        extracted = extract_explicit_targets_from_text(multiline_prompt)
+        self.assertIn("webme-mu.vercel.app", extracted)
+
+        hallucinated_args = {"target": "www.example.com", "ports": "80,443"}
+        sanitized = sanitize_hallucinated_targets(hallucinated_args, "webme-mu.vercel.app")
+        self.assertEqual(sanitized["target"], "webme-mu.vercel.app")
+        self.assertEqual(sanitized["ports"], "80,443")
+
+        hallucinated_web_args = {"target_url": "http://ip"}
+        sanitized_web = sanitize_hallucinated_targets(hallucinated_web_args, "webme-mu.vercel.app")
+        self.assertEqual(sanitized_web["target_url"], "http://webme-mu.vercel.app")
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -796,6 +813,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R34 First-class distributed tracing and action provenance", True, ""),
         ("R35 Formal model boundary and role separation", True, ""),
         ("R36 Dual-mode conversation and session persistence", True, ""),
+        ("R37 Target anchor extraction and placeholder sanitization", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
