@@ -1,320 +1,215 @@
 # LONLY — Logically Optimized Network Logistics & Intelligence
 
-> **An autonomous AI-powered penetration testing agent for Kali Linux, powered by a local LLM via Ollama.**
+An autonomous, multi-phase penetration testing and vulnerability assessment agent for Linux environments, combining a Generalist ReAct Orchestrator with a dedicated Privilege Escalation Specialist model.
+
+---
+
+## Legal & Compliance Disclaimer
+
+This software is designed exclusively for authorized penetration testing, vulnerability assessment, and defensive security research.
+
+Unauthorized access to computer systems, networks, or digital infrastructure is illegal under applicable cybercrime legislation (e.g., the Computer Fraud and Abuse Act in the US, Section 33 of the Thai Cybercrime Act, and equivalent international frameworks). Operators must obtain explicit, written authorization from asset owners before directing this software against any target. The developers and contributors accept no liability for damages resulting from improper or unauthorized use.
+
+---
+
+## Architecture Overview
+
+LONLY implements a hybrid architecture combining high-level autonomous planning with domain-specialized execution:
+
+1. **Generalist Orchestrator (`gemma3:4b`)**: Manages the overarching ReAct (Reasoning + Acting) loop, user interaction, reconnaissance, web vulnerability discovery, Active Directory inspection, and report generation.
+2. **Privilege Escalation Specialist (`privesc-llm-rl:4b`)**: A specialized 4B parameter model trained via Reinforcement Learning on interactive Linux environments. It is dynamically routed when the Task Tree enters the `privesc` phase.
+3. **Structured State Machine**:
+   - **Task Tree (`core/state.py`)**: Canonical phase stack (`recon` -> `enumerate` -> `vuln_check` -> `privesc` -> `report`).
+   - **Findings Log (`core/state.py`)**: Persistent JSON findings database injected into the system prompt each turn, ensuring critical target intel survives rolling conversation window truncation.
+4. **Safety & Policy Guardrails (`core/guardrails.py`)**:
+   - **Deny-by-Default Scope Enforcement**: Target IP, CIDR, and domain allowlists evaluated prior to any tool invocation.
+   - **Multi-Tier Execution Gates**: Soft-blocks dangerous tools (`sqlmap`, `nikto`, `enum4linux`) and requires interactive human confirmation for high-impact tools (`crackmapexec`, `hydra`, `metasploit`, `shell_exec`).
+   - **Cumulative Risk Budget**: Checkpoints execution at 5 risk points for operator review (continue, stop, or redirect).
+5. **Evidence Grounding Gate (`core/parser.py`)**: Attaches an `[EVIDENCE LOG]` block citing verified command executions and raw outputs to prevent hallucinations and ungrounded breach claims.
 
 ```
-.-.   .----..-..-..-.   .-..-.
-| |__ | || || .` || |__  >  / 
-`----'`----'`-'`-'`----' `-'  
+                      +------------------------------------------+
+                      |       Operator Objective / Request       |
+                      +--------------------+---------------------+
+                                           |
+                                           v
++------------------------------------------------------------------------------------+
+| LONLY Generalist Orchestrator (gemma3:4b)                                          |
+|                                                                                    |
+|  [Task Tree]               [Findings Store]             [Guardrail Engine]         |
+|  Phase: recon/enum/vuln    runs/<ts>/findings.json      Scope Allowlist (IP/CIDR)  |
+|                                                         Risk Checkpoint (max 5)    |
+|                                                         Interactive Confirm Gate   |
++------------------------------------------+-----------------------------------------+
+                                           |
+                    +----------------------+----------------------+
+                    |                                             |
+                    v (recon / web / enum / report)               v (privesc phase)
++------------------------------------------+  +--------------------------------------+
+| Modular Tool Arsenal (24 Tools)          |  | PrivEsc Specialist Node              |
+|                                          |  | (privesc-llm-rl:4b)                  |
+| tools/recon.py   tools/web.py            |  |                                      |
+| tools/creds.py   tools/infra.py          |  | models/privesc_protocol.py           |
++-------------------+----------------------+  +-------------------+------------------+
+                    |                                             |
+                    +----------------------+----------------------+
+                                           |
+                                           v
++------------------------------------------------------------------------------------+
+| Grounding & Evidence Validation (core/parser.py)                                   |
+| - Fabrication & overclaim filtering                                                |
+| - Machine-logged command + output proof ([EVIDENCE LOG])                           |
++------------------------------------------+-----------------------------------------+
+                                           |
+                                           v
+                      +--------------------+---------------------+
+                      | Verified Final Assessment & Report       |
+                      +------------------------------------------+
 ```
-
----
-
-## Legal Disclaimer
-
-> **This tool is intended for authorized security testing and educational purposes ONLY.**
-> Using LONLY against systems you do not own or have explicit written permission to test is illegal and unethical.
-> The author assumes no liability for misuse of this software.
-
----
-
-## Overview
-
-LONLY is an interactive, autonomous penetration testing AI agent that runs entirely on your local machine. It uses a **ReAct (Reasoning + Acting)** loop powered by a locally-hosted LLM via [Ollama](https://ollama.ai/) to intelligently plan and execute multi-phase security assessments — from reconnaissance through exploitation.
-
-It wraps industry-standard Kali Linux tools into a unified AI-driven interface, intelligently deciding which tool to use, in what order, based on your natural-language objective.
-
----
-
-## Key Features
-
-- **Autonomous ReAct Agent Loop** — The LLM reasons, selects a tool, observes the output, then decides the next step, with human-in-the-loop checkpoints for risk and safety
-- **Safety Controls** — Two-tier gate: dangerous tools (SQLMap, Nikto, enum4linux) are blocked without permission; confirm-required tools (crackmapexec, hydra, metasploit) prompt y/n before execution
-- **Natural Language Interface** — Give objectives in plain English or Thai; the agent handles the technical execution
-- **RAG Knowledge Base** — Augments the LLM with a local ChromaDB vector store of penetration testing cheat sheets and documentation
-- **BloodHound Analysis** — Parses SharpHound collection ZIPs locally using NetworkX to find attack paths to Domain Admins
-- **Live CVE Lookup** — Queries the NVD API in real time and cross-references results with the local Exploit-DB via SearchSploit
-- **Sliding Window Memory** — Maintains a rolling chat history (last 20 messages) to preserve context without overflowing the LLM context window
-- **Risk-Budget Checkpoint** — Tool calls accumulate risk points; when the budget (5 pts) is exceeded, the operator reviews progress and decides to continue, stop, or redirect the task
-- **Cross-Task Carryover** — Fabrication/overclaim/placeholder events decay across tasks (full previous task, half two tasks ago, expired after three), preventing degraded LLM behavior from silently compounding
-- **Fabrication Detection** — Scans Final Answer for tool names never actually invoked, with suggestion-context exemption to reduce false positives
-- **Overclaim Detection** — Checks if the answer claims positive findings from a tool whose raw output contained none (currently registered for metasploit_auxiliary_scanner)
-- **Placeholder Answer Detection** — Catches when the LLM copies format examples instead of writing real content, with one automatic retry
-- **Duplicate Call Prevention** — Blocks re-execution of identical (tool, args) pairs within a session
-- **Session Logging** — Every tool call and Final Answer is logged to `session_log.jsonl` with full raw output for auditability
-- **Tool Failure Detection** — Shell errors, timeouts, and command-not-found results are flagged as failures so the LLM cannot mistake them for real findings
 
 ---
 
 ## Tool Arsenal
 
-LONLY integrates **24 tools** covering the full penetration testing lifecycle:
+LONLY exposes **24 domain-modularized tools** organized under `tools/`:
 
-### Reconnaissance & Port Scanning
-| Tool | Function |
-|---|---|
-| `rustscan_port_scan` | Ultra-fast full-port scan (1–65535) via RustScan |
-| `masscan_port_scan` | High-speed asynchronous scanning for large CIDR ranges |
-| `nmap_security_scan` | Detailed service/version/OS detection |
+### Reconnaissance & Port Scanning (`tools/recon.py`)
+- `rustscan_port_scan` — Full-range TCP port discovery using RustScan.
+- `masscan_port_scan` — Asynchronous high-rate network subnet scanner.
+- `nmap_security_scan` — Service version, OS fingerprinting, and NSE script execution.
+- `whatweb_web_fingerprint` — Web framework, CMS, and technology identifier.
+- `enum4linux_smb_audit` — SMB, Samba, and NetBIOS security enumeration (gated).
+- `ldap_search_enumeration` — Active Directory and OpenLDAP search client.
+- `kerbrute_active_directory_assessment` — Kerberos user enumeration and password spraying.
 
-### Web Application Assessment
-| Tool | Function |
-|---|---|
-| `whatweb_web_fingerprint` | Identify web technologies and frameworks |
-| `gobuster_directory_scan` | Brute-force directories and files |
-| `ffuf_web_fuzz` | Advanced web fuzzing (requires `FUZZ` keyword in URL) |
-| `nikto_web_scan` | Comprehensive web server vulnerability scan (requires permission) |
-| `sqlmap_vulnerability_assessment` | Automated SQL injection detection and exploitation (requires permission) |
-| `wpscan_wordpress_audit` | WordPress plugin, theme, and user enumeration |
-| `curl_web_request` | Custom HTTP request crafting |
+### Web Application Assessment (`tools/web.py`)
+- `gobuster_directory_scan` — Directory and file brute-forcing via wordlists.
+- `ffuf_web_fuzz` — High-performance HTTP endpoint and parameter fuzzing.
+- `nikto_web_scan` — Comprehensive web server vulnerability scanning (gated).
+- `sqlmap_vulnerability_assessment` — Automated SQL injection assessment (gated).
+- `wpscan_wordpress_audit` — WordPress core, plugin, and theme vulnerability audit.
+- `curl_web_request` — Raw HTTP request crafting with header and body inspection.
 
-### Active Directory & Network Services
-| Tool | Function |
-|---|---|
-| `enum4linux_smb_audit` | SMB/Samba enumeration (requires permission) |
-| `crackmapexec` | SMB/SSH/WinRM/MSSQL authentication testing and command execution |
-| `ldap_search_enumeration` | Anonymous/simple-bind LDAP queries against Active Directory |
-| `kerbrute_active_directory_assessment` | Kerberos user enumeration and password spraying |
+### Credentials & Lateral Movement (`tools/creds.py`)
+- `crackmapexec` — Protocol-level credential validation for SMB, WinRM, SSH, MSSQL (confirm-required).
+- `hydra_brute_force` — Multi-protocol network authentication testing (confirm-required).
+- `metasploit_auxiliary_scanner` — Execution of Metasploit auxiliary scanner modules (confirm-required).
+- `reverse_shell_listener` — Local Netcat listener for reverse connection capture.
 
-### Exploitation & Post-Exploitation
-| Tool | Function |
-|---|---|
-| `hydra_brute_force` | Network login brute-force across multiple protocols |
-| `searchsploit_exploit_lookup` | Search local Exploit-DB archive |
-| `metasploit_auxiliary_scanner` | Execute Metasploit auxiliary modules |
-| `impacket_tool_execute` | Windows/AD assessment via Impacket suite (secretsdump, etc.) |
-| `reverse_shell_listener` | Set up a Netcat listener for incoming reverse shells |
-| `linpeas_privilege_escalation_scan` | Local privilege escalation enumeration via LinPEAS |
-
-### Intelligence & Analysis
-| Tool | Function |
-|---|---|
-| `cve_lookup` | Real-time CVE details from NVD API + Exploit-DB cross-reference |
-| `bloodhound_analyze` | Local BloodHound/SharpHound ZIP analysis using NetworkX graph |
-| `rag_query` | Query internal ChromaDB knowledge base for pentest techniques |
-| `shell_exec` | Execute arbitrary shell commands on the host |
+### Infrastructure & Intelligence (`tools/infra.py`)
+- `searchsploit_exploit_lookup` — Local Exploit-DB archive search client.
+- `linpeas_privilege_escalation_scan` — Automated Linux local enumeration script.
+- `impacket_tool_execute` — Windows and Active Directory protocol tooling suite.
+- `cve_lookup` — Real-time vulnerability intelligence via NVD API and Exploit-DB.
+- `bloodhound_analyze` — Local SharpHound/BloodHound graph parsing using NetworkX.
+- `rag_query` — Semantic retrieval against local ChromaDB pentest documentation.
+- `shell_exec` — Safe host command runner with audit logging and confirmation gates.
 
 ---
 
-## Architecture
+## Evaluation & Acceptance Harness
 
-```
-User Input (Natural Language)
-        │
-        ▼
-┌────────────────────────────────────┐
-│  Messages: SysPrompt + History +   │
-│            HumanMessage            │
-└──────────────┬─────────────────────┘
-               │
-               ▼
-┌──────────────────────┐
-│    Ollama LLM        │
-│    (gemma3)          │
-└──────┬───────────────┘
-       │  Thought → Action → Action Input
-       ▼
-┌──────────────────────┐
-│  parse_react_response│
-└──────┬───────────────┘
-       │
-       ▼
-┌──────────────────────────────────────────────┐
-│  Safety Controls                             │
-│  • Dangerous tools → blocked (needs OK)      │
-│  • Confirm tools → y/n prompt                │
-│  • Duplicate calls → blocked                 │
-└──────────────────┬───────────────────────────┘
-                   │
-                   ▼
-┌──────────────────────────────────────────────┐
-│  Tool Execution (24 Tools)                   │
-│  Nmap / RustScan / SQLMap / Hydra / ...     │
-└──────────────────┬───────────────────────────┘
-                   │ Observation + risk score
-                   ▼
-┌──────────────────────────────────────────────┐
-│  Risk Checkpoint (≥5 → pause for c/s/r)     │
-└──────────────────┬───────────────────────────┘
-                   │
-                   ▼
-            ┌───────────┐
-            │ More      │ yes ────► back to LLM
-            │ steps?    │
-            └─────┬─────┘
-                  │ no
-                  ▼
-┌──────────────────────────────────────────────┐
-│  Final Answer Post-Processing                │
-│  • Placeholder detection & retry             │
-│  • Fabrication detection (unused tools)      │
-│  • Overclaim detection (no real findings)    │
-└──────────────────┬───────────────────────────┘
-                   │
-                   ▼
-            Final Answer to User
+The repository includes an offline evaluation framework (`eval/eval_lonly.py`) with **40 acceptance checks**:
+
+- **Track D (D1–D20)**: Guardrail policy verification, scope boundary enforcement, risk accounting, findings injection, and evidence gates.
+- **Track P (P1–P9)**: 4B-model ReAct parser resilience, markdown fence stripping, trailing comma tolerance, placeholder rejection, and overclaim validation.
+- **Track M (M1–M3)**: Modular architecture contracts, unique 24-tool registry integrity, and subprocess runner delegation.
+- **Track C (C1–C4)**: Trajectory loop quality, duplicate invocation detection, and maximum output character truncation compliance.
+- **Track A (A1–A3)**: Scenario integration suite simulating web reconnaissance, privilege escalation specialist routing, and full 5-phase lifecycle chains.
+- **Track B (B0)**: Subprocess-isolated smoke testing validating all 24 tools with zero side effects.
+
+Run the test suite:
+```bash
+python eval/eval_lonly.py
 ```
 
 ---
 
-## Requirements
+## Local Models & Fine-Tuning Flywheel
 
-### System
-- Kali Linux (recommended) or any Debian-based distro with pentest tools installed
-- Python 3.10+
-- [Ollama](https://ollama.ai/) with `gemma3:4b` model (or another capable model)
+LONLY operates on a dual-model production stack served via Ollama:
+- `gemma3:4b` — Generalist ReAct Orchestrator.
+- `privesc-llm-rl:4b` — Privilege Escalation Specialist.
 
-### Python Dependencies
-```bash
-pip install langchain langchain-core langchain-community langchain-ollama
-pip install chromadb sentence-transformers
-pip install networkx pydantic requests
-pip install huggingface-hub
-```
-
-### Kali Linux Tools (must be installed and in PATH)
-```
-nmap, rustscan, masscan, nikto, sqlmap, gobuster, ffuf,
-whatweb, wpscan, enum4linux, crackmapexec, hydra, kerbrute,
-ldap-utils, metasploit-framework, impacket-scripts,
-searchsploit, netcat, linpeas (peass-ng)
-```
-
-Install common tools:
-```bash
-sudo apt update && sudo apt install -y nmap rustscan masscan nikto sqlmap \
-  gobuster ffuf whatweb wpscan enum4linux crackmapexec hydra kerbrute \
-  ldap-utils metasploit-framework impacket-scripts netcat-traditional
-```
-Note: `searchsploit` comes with the `exploitdb` package (`sudo apt install exploitdb`);
-`linpeas` comes with `peass-ng` (`sudo apt install peass-ng`).
+### Local Fine-Tuning Pipeline (`models/sft/`)
+To fine-tune models on engagement traces:
+1. **Prepare Data**: `python models/sft/prepare_data.py` (formats transcripts to Qwen3 chat template).
+2. **Train QLoRA**: `python models/sft/train_lonly_sft.py --data ~/.cache/lonly_sft/data_full.jsonl --out ~/models/lonly-sft-run`
+3. **Merge & Quantize**: `bash models/sft/serve_sft.sh ~/models/lonly-sft-run/adapter lonly-sft:4b`
 
 ---
 
 ## Installation & Setup
 
-1. **Clone the repository**
+### Prerequisites
+- Linux (Debian, Ubuntu, or Kali Linux recommended)
+- Python 3.10+
+- [Ollama](https://ollama.ai/) installed and running
+
+### 1. Clone Repository
 ```bash
 git clone https://github.com/poppp334/Lonly_HARNESS.git
-cd lonly-pentest-agent
+cd Lonly_HARNESS
 ```
 
-2. **Install Python dependencies**
+### 2. Install Python Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-3. **Pull the LLM model via Ollama**
+### 3. Pull Required Models
 ```bash
 ollama pull gemma3:4b
 ```
 
-4. **(Optional) Set up the RAG knowledge base**
+### 4. Run Acceptance Tests
 ```bash
-# Place your pentest cheat sheets / markdown files in the knowledge/ folder
-# Then run the ingestion script to populate ChromaDB
-python ingest_knowledge.py
+python eval/eval_lonly.py
 ```
 
-5. **Run LONLY**
+### 5. Launch LONLY
 ```bash
 python pentest_agent.py
 ```
 
 ---
 
-## Usage
-
-After launching, you'll be greeted by the LONLY banner and an interactive prompt:
-
-```
->>> Scan 192.168.1.50 and find all open web ports
-```
-
-LONLY will autonomously:
-1. Run RustScan for initial port discovery
-2. Run Nmap for service/version detection on discovered ports
-3. Run WhatWeb for web technology fingerprinting
-4. Present a summary, then ask your permission before running intrusive/confirm-required tools
-
-### Example Commands
-```
->>> Perform a full reconnaissance on 10.10.10.100
->>> Check if 192.168.1.1 has any known CVEs
->>> Enumerate users on the Active Directory domain corp.local at 10.0.0.5
->>> Analyze my BloodHound data at /tmp/bloodhound.zip
-```
-
-### Interactive Commands
-| Command | Description |
-|---------|---|
-| `exit` / `quit` | Shut down LONLY |
-| `clear` | Wipe conversation memory and start fresh |
-| `help` | Show usage tips |
-
-### Checkpoint Prompts
-When the risk budget is reached, LONLY pauses and shows a detailed breakdown:
-```
-=== Task 2 — Checkpoint (risk 5/5) ===
-  Carryover: 3 pts [task 1: fabrication = 3 full]
-  In-task:   2 pts [1 regular + 1 confirm required tool]
-  In-task tools: nmap_security_scan, rustscan_port_scan
-  Total:     5 >= 5 — paused for operator review.
-[c]ontinue / [s]top task / [r]edirect:
-```
-- `c` — continue the current task (risk resets)
-- `s` — stop the task and return to the main prompt
-- `r` — redirect to a new objective (counts as a new task for carryover decay)
-
----
-
-## Configuration
-
-### LLM Model
-Edit `llm = ChatOllama(...)` at line 526 of `pentest_agent.py`:
-```python
-llm = ChatOllama(model="gemma3:4b", temperature=0.2, num_ctx=8192)
-```
-Replace `"gemma3:4b"` with any model available in your Ollama installation (e.g., `llama3`, `mistral`, `qwen2.5`). More capable models will produce better reasoning.
-
-### Risk-Budget Checkpoint
-The checkpoint system is tuned via named constants in `pentest_agent.py`:
-- `RISK_CHECKPOINT_THRESHOLD = 5` — risk score that triggers operator review
-- `RISK_POINTS` dict — per-event values: `regular_tool=1`, `confirm_required_tool=2`, `dangerous_tool_blocked=1`, `fabrication/overclaim/placeholder=3`
-
-### Safety Controls
-Intrusive tools (`sqlmap`, `nikto`, `enum4linux`) are blocked by default at line 920 without operator permission. Tools requiring explicit confirmation (`crackmapexec`, `hydra`, `metasploit_auxiliary_scanner`) prompt `[y/n]` before execution.
-
----
-
 ## Project Structure
 
 ```
-lonly-pentest-agent/
-├── pentest_agent.py      # Main agent — ReAct loop, 24 tools, risk-budget checkpoint, CLI
-├── ingest_knowledge.py   # ChromaDB ingestion from knowledge/*.md
-├── knowledge/            # RAG source markdown (kerberoasting, linux-privesc, etc.)
-├── chroma_db/            # ChromaDB vector store (gitignored; auto-created by ingest_knowledge.py)
-├── AGENTS.md             # Agent configuration guide for opencode / AI assistants
-├── requirements.txt      # Python dependencies
-├── .gitignore            # Ignores __pycache__, chroma_db/, session_log.jsonl
-├── .python-version       # Pins Python 3.10 for pyenv/uv users
+Lonly_HARNESS/
+├── pentest_agent.py          # Main interactive CLI & ReAct agent loop
+├── core/                     # Core runtime subsystems
+│   ├── guardrails.py         # Scope control, confirmation gates, risk budgeting
+│   ├── parser.py             # Resilient ReAct/JSON parsing & overclaim validators
+│   └── state.py              # FindingsLog, TaskTree, phase routing table
+├── tools/                    # Modular 24-tool subsystem
+│   ├── __init__.py           # Central tool registry and tool_map
+│   ├── base.py               # Safe execution wrapper and output truncation
+│   ├── recon.py              # Nmap, RustScan, Masscan, WhatWeb, Enum4linux, LDAP
+│   ├── web.py                # Gobuster, Ffuf, Nikto, Sqlmap, WPScan, Curl
+│   ├── creds.py              # CrackMapExec, Hydra, Metasploit, ReverseShell
+│   └── infra.py              # LinPEAS, SearchSploit, Impacket, BloodHound, RAG
+├── models/                   # Specialist integration & training
+│   ├── privesc_protocol.py   # Specialist protocol & Ollama dispatch
+│   ├── smoke_test.py         # Specialist verification smoke test
+│   ├── benchmark_runner.py   # Scenario benchmark runner
+│   ├── analyze_benchmark.py  # Benchmark log and trajectory analyzer
+│   └── sft/                  # Local SFT training & GGUF quantization scripts
+├── eval/                     # Test & Evaluation Harness
+│   ├── eval_lonly.py         # Main runner (Tracks D, P, M, C, A, B)
+│   ├── track_a_runner.py     # Scenario integration suite
+│   ├── track_b_worker.py     # Subprocess-isolated tool smoke worker
+│   └── track_c_scorer.py     # Trajectory and loop quality scorer
+├── docs/                     # Technical specifications & research
+│   ├── architecture-upgrade-map.md
+│   └── cybersecurity-harness-research.md
+├── requirements.txt          # Python runtime dependencies
 └── README.md
 ```
 
 ---
 
-## Contributing
+## License
 
-Contributions are welcome! Ideas for improvement:
-- Add more tools (e.g., `nuclei`, `feroxbuster`, `evil-winrm`)
-- Build a proper document ingestion pipeline for the RAG knowledge base
-- Enhance report generation / export findings as PDF or HTML
-- Web UI frontend
-- Multi-target campaign management
-
-Please open an issue or pull request.
-
----
-
-*Built for security professionals. Use responsibly.*
+Distributed under the MIT License. See `LICENSE` for details.
