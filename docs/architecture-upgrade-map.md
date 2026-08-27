@@ -68,8 +68,9 @@ machine-checkable acceptance test in `eval/`.
 - **Track C (C1–C4)**: Trajectory loop quality and truncation bounds.
 - **Track A (A1–A3)**: Scenario lifecycle integration.
 - **Track E (E1–E5)**: CLI interaction and edge cases.
+- **Track R (R1–R16)**: Adversarial red team & security boundaries.
 - **Track B (B0)**: Subprocess-isolated tool smokes (24/24).
-- Total: **45/45 checks passing (100%)**.
+- Total: **61/61 checks passing (100%)**.
 
 ### N6 — Specialist verification & flywheel (`models/`) [Implemented & Verified]
 - Specialist protocol adherence (`models/privesc_protocol.py`, `models/smoke_test.py`).
@@ -79,6 +80,26 @@ machine-checkable acceptance test in `eval/`.
 ### N7 — Modular tool subsystem (`tools/`) [Implemented & Verified]
 - 24 tools decoupled into `recon.py`, `web.py`, `creds.py`, `infra.py`, `base.py`.
 - Smart parameter sanitization (`clean_target`, `ensure_url`, `find_wordlist`, `_format_rustscan_ports`).
+
+### N8 — Deterministic ExecutionBroker & TargetPolicy (`core/broker.py`, `core/policy.py`) [Implemented & Verified]
+- `shell=False` process execution strictly enforced across all 24 tools.
+- RFC-compliant URL parsing and IPv4/IPv6/CIDR host canonicalization.
+- Security authorization enforced at the broker boundary (below the agent loop).
+
+### N9 — SecretVault & Sensitive Data Redaction (`core/vault.py`) [Implemented & Verified]
+- Opaque reference tokens (`cred_<sha256>`) preventing plaintext credentials in prompts.
+- Deterministic session log and SFT trajectory secret redaction.
+- Structured `CapabilityDescriptor` configuration.
+
+### N10 — Immutable Evidence Graph & Provenance Fencing (`core/evidence.py`) [Implemented & Verified]
+- SHA-256 content-addressable artifact DAG (`command` → `raw_output` → `finding`).
+- Tamper-evident graph integrity verification.
+- `<untrusted_observation>` boundary tags mitigating indirect prompt injection.
+
+### N11 — Cryptographic Claim Verification & Report Engine (`core/evidence.py`) [Implemented & Verified]
+- `ClaimVerifier` automated claim-to-evidence cross-referencing.
+- Automated engagement report generator with SHA-256 cryptographic proof hashes.
+- CLI first-class `report` command.
 
 ## Debt policy (enforced by eval/)
 
