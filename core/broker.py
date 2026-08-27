@@ -155,7 +155,8 @@ class ExecutionBroker:
                 combined = combined[:max_output] + "\n... [OUTPUT TRUNCATED]"
                 truncated = True
 
-            final_output = combined.strip() or "[Command executed successfully with no output]"
+            raw_final = combined.strip() or "[Command executed successfully with no output]"
+            final_output = self.vault.redact(raw_final)
             
             res = ExecutionResult(
                 execution_id=exec_id,

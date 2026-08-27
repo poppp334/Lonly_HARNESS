@@ -97,7 +97,6 @@ class EvidenceGraph:
         self.run_dir = run_dir or os.path.join(
             "runs", time.strftime("%Y%m%dT%H%M%S")
         )
-        os.makedirs(self.run_dir, exist_ok=True)
         self.path = os.path.join(self.run_dir, "evidence_graph.json")
 
     def add_artifact(
@@ -318,6 +317,7 @@ class EvidenceGraph:
                 "saved_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             },
         }
+        os.makedirs(self.run_dir, exist_ok=True)
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False, indent=2)
 
