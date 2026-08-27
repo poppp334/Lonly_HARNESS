@@ -690,6 +690,43 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertEqual(prov["approval_id"], "appr_999")
         self.assertEqual(prov["ancestors"], ["planner_decision"])
 
+    def test_r35_model_boundary_role_separation(self):
+        """R35: Planner, Specialist, and Verifier roles maintain strict interface boundaries."""
+        from core.agent_roles import PlannerRole, SpecialistRole, VerifierRole
+        from core.evidence import ClaimType, EvidenceGraph, TypedClaim
+
+        # 1. Planner generates structured proposal (no execution power)
+        proposal = PlannerRole.create_proposal(
+            phase="recon",
+            target="10.0.0.5",
+            recommended_capability="nmap_security_scan",
+            rationale="Initial port discovery",
+        )
+        self.assertEqual(proposal.phase, "recon")
+        self.assertEqual(proposal.recommended_capability, "nmap_security_scan")
+
+        # 2. Specialist generates domain hypothesis
+        hypo = SpecialistRole.create_hypothesis(
+            domain="privesc",
+            hypothesis="SUID binary escalation via /usr/bin/find",
+            proposed_capability="shell_exec",
+            target="10.0.0.5",
+        )
+        self.assertEqual(hypo.specialist_domain, "privesc")
+
+        # 3. Verifier checks claims against evidence graph
+        graph = EvidenceGraph()
+        graph.add_output_artifact("PORT 80/tcp open http", "nmap", "10.0.0.5")
+        verifier = VerifierRole(graph)
+
+        claim_valid = TypedClaim(claim_type=ClaimType.OPEN_PORT, target="10.0.0.5", port=80)
+        verdict = verifier.verify_security_claim(claim_valid)
+        self.assertTrue(verdict.is_valid)
+
+        claim_invalid = TypedClaim(claim_type=ClaimType.OPEN_PORT, target="10.0.0.5", port=445)
+        verdict_bad = verifier.verify_security_claim(claim_invalid)
+        self.assertFalse(verdict_bad.is_valid)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -733,6 +770,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R32 Benchmark ground truth and hallucination metrics", True, ""),
         ("R33 Transactional job queue and circuit breaker", True, ""),
         ("R34 First-class distributed tracing and action provenance", True, ""),
+        ("R35 Formal model boundary and role separation", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
