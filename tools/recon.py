@@ -69,24 +69,42 @@ def nmap_security_scan(target: str, ports: Optional[str] = None, scan_type: str 
     return run_cmd(cmd, timeout=180)
 
 
+def _format_rustscan_ports(ports: Optional[str]) -> str:
+    """Intelligently maps LLM port inputs to the correct RustScan CLI flags (-r, -p, --top, or default)."""
+    if not ports:
+        return ""
+    p = ports.strip().lower()
+    if p in ("all", "1-65535", "full", "65535", "none", "*"):
+        return ""  # RustScan default is full 1-65535 scan
+    if p in ("top", "top1000", "top-1000", "top 1000"):
+        return "--top"
+    if "-" in p and "," not in p:
+        return f"-r {p}"
+    # Single port or comma-separated list (e.g., '80,443' or '80')
+    clean = ",".join(part.strip() for part in p.split(",") if part.strip())
+    return f"-p {clean}" if clean else ""
+
+
 @tool(args_schema=RustScanInput)
 def rustscan_port_scan(
     target: str,
-    ports: Optional[str] = "1-65535",
+    ports: Optional[str] = None,
     scan_version: bool = False,
     ulimit: Optional[int] = None,
     batch_size: Optional[int] = None,
 ) -> str:
-    """Ultra-fast port scanner (RustScan). Best for discovering all open ports (1-65535) in seconds."""
-    port_range = ports if ports else "1-65535"
+    """Ultra-fast port scanner (RustScan). Discovers open ports across 1-65535 in seconds."""
+    port_flag = _format_rustscan_ports(ports)
     opts = []
+    if port_flag:
+        opts.append(port_flag)
     if ulimit:
         opts.append(f"--ulimit {ulimit}")
     if batch_size:
         opts.append(f"-b {batch_size}")
     opt_str = f" {' '.join(opts)}" if opts else ""
     nmap_flags = "-T4 -sV" if scan_version else "-T4"
-    cmd = f"rustscan -a {target} -r {port_range}{opt_str} -- {nmap_flags}"
+    cmd = f"rustscan -a {target}{opt_str} -- {nmap_flags}"
     return run_cmd(cmd, timeout=60)
 
 
