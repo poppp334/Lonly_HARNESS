@@ -132,7 +132,7 @@ LONLY exposes **24 domain-modularized tools** organized under `tools/` with all 
 
 ## Evaluation & Adversarial Hardening Suite
 
-LONLY v2 enforces zero technical debt and 100% deterministic safety verified by **83 acceptance checks** across 8 tracks:
+LONLY v2 enforces zero technical debt and 100% deterministic safety verified by **84 acceptance checks** across 8 tracks:
 
 - **Track D (D1–D20)**: Safety, Scope, Confirmation, State & Phase Invariants
 - **Track P (P1–P9)**: ReAct, Markdown Fence, Evidence & Overclaim Interception
@@ -140,7 +140,7 @@ LONLY v2 enforces zero technical debt and 100% deterministic safety verified by 
 - **Track C (C1–C4)**: Trajectory Quality, Duplication & Truncation Bounds
 - **Track A (A1–A3)**: Scenario Replays (Web Recon, Privesc Specialist, 5-Phase Chain)
 - **Track E (E1–E5)**: Live CLI Resilience, Unicode & Human-in-the-Loop Approval
-- **Track R (R1–R38)**: Comprehensive Red Team Adversarial & Cryptographic Suite:
+- **Track R (R1–R39)**: Comprehensive Red Team Adversarial & Cryptographic Suite:
   - `R1–R5`: Shell injection, CIDR IPv6, URL spoofing & specialist broker isolation
   - `R6–R8`: SecretVault token opaque references, zeroization & credential redaction
   - `R9–R16`: SHA-256 DAG evidence graph & tamper detection
@@ -166,10 +166,11 @@ LONLY v2 enforces zero technical debt and 100% deterministic safety verified by 
   - `R36`: Dual-mode conversation and persistent session workspaces (`SessionManager`)
   - `R37`: Target anchor extraction and placeholder sanitization
   - `R38`: Standard library CLI reader with arrow key history, line editing, and autocompletion
+  - `R39`: Execution broker dynamic scope allowlist synchronization
 - **Track B (B0)**: Per-tool subprocess smoke validation across all 24 tools
 
 ```bash
-# Run complete verification harness (83/83 checks)
+# Run complete verification harness (84/84 checks)
 LONLY_EVAL_PYTHON=~/pentest_env/bin/python ~/pentest_env/bin/python eval/eval_lonly.py
 ```
 

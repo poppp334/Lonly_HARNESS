@@ -786,6 +786,25 @@ class TestRedTeamHarness(unittest.TestCase):
             match2 = completer("/doc", 0)
             self.assertEqual(match2, "/doctor")
 
+    def test_r39_broker_dynamic_scope_synchronization(self):
+        """R39: DEFAULT_BROKER dynamically respects additions to core.guardrails.ALLOWED_TARGETS."""
+        from core.guardrails import ALLOWED_TARGETS
+        from core.broker import DEFAULT_BROKER
+
+        test_domain = "authorized-test-target.domain.local"
+        try:
+            ALLOWED_TARGETS.clear()
+            # Out of scope when empty (loopback only)
+            res1 = DEFAULT_BROKER.policy.resolve_destination(test_domain)
+            self.assertFalse(res1.is_authorized)
+
+            # Dynamically add to ALLOWED_TARGETS
+            ALLOWED_TARGETS.append(test_domain)
+            res2 = DEFAULT_BROKER.policy.resolve_destination(test_domain)
+            self.assertTrue(res2.is_authorized)
+        finally:
+            ALLOWED_TARGETS.clear()
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -833,6 +852,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R36 Dual-mode conversation and session persistence", True, ""),
         ("R37 Target anchor extraction and placeholder sanitization", True, ""),
         ("R38 CLI reader arrow history and autocompletion", True, ""),
+        ("R39 Broker dynamic scope synchronization", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

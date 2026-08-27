@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from core.audit import AuditEventType, AuditLedger, DEFAULT_AUDIT_LEDGER
+from core.guardrails import ALLOWED_TARGETS
 from core.policy import DEFAULT_CAPABILITY_POLICY, CapabilityPolicy, TargetPolicy
 from core.vault import DEFAULT_VAULT, SecretVault
 
@@ -50,7 +51,10 @@ class ExecutionBroker:
         capability_policy: Optional[CapabilityPolicy] = None,
         audit_ledger: Optional[AuditLedger] = None,
     ):
-        self.policy = policy or TargetPolicy()
+        if policy is not None:
+            self.policy = policy
+        else:
+            self.policy = TargetPolicy(allowed_targets=ALLOWED_TARGETS)
         self.vault = vault or DEFAULT_VAULT
         self.capability_policy = capability_policy or DEFAULT_CAPABILITY_POLICY
         self.audit_ledger = audit_ledger or DEFAULT_AUDIT_LEDGER

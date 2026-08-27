@@ -14,7 +14,7 @@ help:
 	@echo "  LONLY v2 — Management & Automation"
 	@echo "========================================================================"
 	@echo "  make run        : Launch LONLY interactive Dual-Mode CLI shell"
-	@echo "  make test       : Run 83-check acceptance & security evaluation suite"
+	@echo "  make test       : Run 84-check acceptance & security evaluation suite"
 	@echo "  make doctor     : Run comprehensive system health and dependency check"
 	@echo "  make ingest     : Build RAG vector knowledge base from knowledge/*.md"
 	@echo "  make setup      : Install Python dependencies & pull Ollama model"
