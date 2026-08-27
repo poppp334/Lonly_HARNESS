@@ -85,9 +85,13 @@ class ExecutionBroker:
 
         # 2. Target Scope Policy Check (if target provided)
         if target:
-            if not self.policy.is_in_scope(target):
+            if isinstance(target, str):
+                resolved_target = self.policy.resolve_destination(target)
+            else:
+                resolved_target = target
+            if not resolved_target.is_authorized:
                 blocked_msg = (
-                    f"[SCOPE BLOCKED] Target '{target}' is out of authorized scope. "
+                    f"[SCOPE BLOCKED] {resolved_target.rejection_reason or f'Target {target} is out of authorized scope.'} "
                     f"In-scope: {self.policy.allowed_targets or 'loopback only'}."
                 )
                 return ExecutionResult(

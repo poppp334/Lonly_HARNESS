@@ -302,6 +302,29 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertEqual(res_blocked.exit_code, 126)
         self.assertIn("[POLICY BLOCKED]", res_blocked.stderr)
 
+    def test_r19_target_destination_resolution_and_dns_rebinding_defense(self):
+        """R19: ResolvedTarget validates actual socket destination and defends against DNS rebinding."""
+        from core.policy import TargetPolicy
+
+        policy = TargetPolicy(allowed_targets=["corp.local", "192.168.1.0/24"])
+
+        # 1. IP literal resolution
+        t1 = policy.resolve_destination("192.168.1.50:443")
+        self.assertTrue(t1.is_authorized)
+        self.assertTrue(t1.is_private)
+        self.assertEqual(t1.port, 443)
+        self.assertEqual(t1.resolved_ips, ["192.168.1.50"])
+
+        # 2. Legitimate hostname resolving to in-scope private IP
+        t2 = policy.resolve_destination("host.corp.local", custom_resolver={"host.corp.local": ["192.168.1.10"]})
+        self.assertTrue(t2.is_authorized)
+        self.assertEqual(t2.resolved_ips, ["192.168.1.10"])
+
+        # 3. DNS rebinding attack: hostname in domain suffix resolves to unauthorized public IP
+        t3 = policy.resolve_destination("evil.corp.local", custom_resolver={"evil.corp.local": ["8.8.8.8"]})
+        self.assertFalse(t3.is_authorized)
+        self.assertIn("DNS rebinding protection", t3.rejection_reason)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -329,6 +352,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R16 Corrupted evidence node tamper detection", True, ""),
         ("R17 Static analysis subprocess & shell invariant", True, ""),
         ("R18 CapabilityPolicy manifest authorization gates", True, ""),
+        ("R19 ResolvedTarget destination validation & rebinding defense", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

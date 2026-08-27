@@ -121,6 +121,122 @@ class TargetPolicy:
 
         return False
 
+    def resolve_destination(
+        self,
+        target: str,
+        resolve_dns: bool = False,
+        custom_resolver: Optional[dict[str, list[str]] | Any] = None,
+    ) -> ResolvedTarget:
+        """Resolve a target into a canonical ResolvedTarget object with IP/socket destination validation."""
+        host, port = self.canonicalize_host(target)
+        if not host:
+            return ResolvedTarget(
+                original=target,
+                canonical_host="",
+                port=port,
+                is_authorized=False,
+                rejection_reason="Empty or unparseable host",
+            )
+
+        resolved_ips: list[str] = []
+        is_loop = False
+        is_priv = False
+        is_pub = False
+
+        # 1. Check if host is already an IP literal
+        try:
+            ip_obj = ipaddress.ip_address(host)
+            resolved_ips.append(str(ip_obj))
+            is_loop = ip_obj.is_loopback
+            is_priv = ip_obj.is_private
+            is_pub = not (is_loop or is_priv or ip_obj.is_multicast or ip_obj.is_reserved)
+        except ValueError:
+            # 2. Hostname resolution
+            if custom_resolver:
+                if isinstance(custom_resolver, dict) and host in custom_resolver:
+                    resolved_ips = list(custom_resolver[host])
+                elif callable(custom_resolver):
+                    resolved_ips = list(custom_resolver(host))
+            elif resolve_dns:
+                try:
+                    import socket
+                    infos = socket.getaddrinfo(host, None)
+                    for info in infos:
+                        ip_str = info[4][0]
+                        if ip_str not in resolved_ips:
+                            resolved_ips.append(ip_str)
+                except Exception:
+                    pass
+
+        # Classify IPs if resolved
+        for ip_str in resolved_ips:
+            try:
+                ip_obj = ipaddress.ip_address(ip_str)
+                if ip_obj.is_loopback:
+                    is_loop = True
+                elif ip_obj.is_private:
+                    is_priv = True
+                else:
+                    is_pub = True
+            except ValueError:
+                pass
+
+        # Validate against scope policy
+        in_scope = self.is_in_scope(target)
+        if not in_scope:
+            return ResolvedTarget(
+                original=target,
+                canonical_host=host,
+                port=port,
+                resolved_ips=resolved_ips,
+                is_loopback=is_loop,
+                is_private=is_priv,
+                is_public=is_pub,
+                is_authorized=False,
+                rejection_reason=f"Target '{target}' (host: '{host}') is out of authorized scope.",
+            )
+
+        # If IPs were resolved, verify every resolved IP is also allowed
+        if resolved_ips and self.allowed_targets:
+            for ip_str in resolved_ips:
+                if not self.is_in_scope(ip_str):
+                    return ResolvedTarget(
+                        original=target,
+                        canonical_host=host,
+                        port=port,
+                        resolved_ips=resolved_ips,
+                        is_loopback=is_loop,
+                        is_private=is_priv,
+                        is_public=is_pub,
+                        is_authorized=False,
+                        rejection_reason=f"Resolved IP '{ip_str}' for host '{host}' is outside authorized scope (DNS rebinding protection).",
+                    )
+
+        return ResolvedTarget(
+            original=target,
+            canonical_host=host,
+            port=port,
+            resolved_ips=resolved_ips,
+            is_loopback=is_loop,
+            is_private=is_priv,
+            is_public=is_pub,
+            is_authorized=True,
+        )
+
+
+@dataclass
+class ResolvedTarget:
+    """Canonical network destination object separating target representation from authorized socket destinations."""
+    original: str
+    canonical_host: str
+    port: Optional[int] = None
+    resolved_ips: list[str] = field(default_factory=list)
+    is_loopback: bool = False
+    is_private: bool = False
+    is_public: bool = False
+    is_authorized: bool = False
+    rejection_reason: str = ""
+
 
 from enum import Enum
 
