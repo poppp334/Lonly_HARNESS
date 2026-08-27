@@ -561,6 +561,16 @@ class TestRedTeamHarness(unittest.TestCase):
         d4, _ = engine.evaluate("custom_nuke", vector=extreme_vec, has_operator_approval=False)
         self.assertEqual(d4, RiskDecision.OPERATOR_APPROVAL_REQUIRED)
 
+    def test_r29_property_based_adversarial_fuzzing(self):
+        """R29: AdversarialFuzzer validates zero crashes and zero scope bypasses across 100+ malformed payloads."""
+        from core.fuzz import AdversarialFuzzer
+
+        passed_policy, total_policy = AdversarialFuzzer.fuzz_target_policy(iterations=100)
+        self.assertEqual(passed_policy, total_policy)
+
+        passed_extract, total_extract = AdversarialFuzzer.fuzz_fact_extractor(iterations=100)
+        self.assertEqual(passed_extract, total_extract)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -598,6 +608,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R26 First-class engagement model and hierarchy", True, ""),
         ("R27 DAG task graph orchestration and dependencies", True, ""),
         ("R28 Multi-dimensional risk policy engine and gates", True, ""),
+        ("R29 Property-based fuzzing and zero-bypass invariants", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
