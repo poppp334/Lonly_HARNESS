@@ -654,6 +654,42 @@ class TestRedTeamHarness(unittest.TestCase):
         blocked_deq = jq.dequeue()
         self.assertIsNone(blocked_deq)
 
+    def test_r34_telemetry_tracing_and_action_provenance_query(self):
+        """R34: TelemetryTracer tracks span hierarchy and answers 'Why did LONLY run this action?'."""
+        from core.telemetry import TelemetryTracer
+
+        tracer = TelemetryTracer()
+        # 1. Root Planner Span
+        root_span = tracer.start_span(
+            name="planner_decision",
+            attributes={"engagement_id": "ENG-2026-01", "decision_id": "dec_101"},
+        )
+
+        # 2. Child Capability Execution Span
+        exec_span = tracer.start_span(
+            name="execute_nmap_security_scan",
+            trace_id=root_span.trace_id,
+            parent_span_id=root_span.span_id,
+            attributes={
+                "engagement_id": "ENG-2026-01",
+                "execution_id": "exec_555",
+                "target": "10.0.0.5",
+                "decision_id": "dec_101",
+                "approval_id": "appr_999",
+                "operator": "lead_sec",
+            },
+        )
+        tracer.finish_span(exec_span.span_id)
+        tracer.finish_span(root_span.span_id)
+
+        # 3. Query Provenance
+        prov = tracer.query_action_provenance(execution_id="exec_555")
+        self.assertTrue(prov["found"])
+        self.assertEqual(prov["action"], "execute_nmap_security_scan")
+        self.assertEqual(prov["decision_id"], "dec_101")
+        self.assertEqual(prov["approval_id"], "appr_999")
+        self.assertEqual(prov["ancestors"], ["planner_decision"])
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -696,6 +732,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R31 Automated CI/CD security gate and static invariant check", True, ""),
         ("R32 Benchmark ground truth and hallucination metrics", True, ""),
         ("R33 Transactional job queue and circuit breaker", True, ""),
+        ("R34 First-class distributed tracing and action provenance", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
