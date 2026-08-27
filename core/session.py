@@ -5,6 +5,7 @@ Enforces:
 - Structured session persistence to JSONL (similar to agy / opencode / claude-code).
 - Rolling context window compaction and persistent findings across sessions.
 - Multi-session workspace switching and history recall.
+- Zero overlapping or colliding job state across isolated sessions.
 """
 from __future__ import annotations
 
@@ -63,7 +64,7 @@ class SessionManager:
         self.active_session: Optional[SessionState] = None
 
     def create_session(self, title: str = "Pentest Session", session_id: Optional[str] = None) -> SessionState:
-        """Create a new persistent session workspace."""
+        """Create a new persistent session workspace with clean, isolated state."""
         s_id = session_id or f"sess_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
         session = SessionState(session_id=s_id, title=title)
         self.active_session = session
@@ -73,7 +74,6 @@ class SessionManager:
     def get_or_create_active_session(self) -> SessionState:
         """Return the current active session or create a default one."""
         if self.active_session is None:
-            # Check for most recently modified session
             sessions = self.list_sessions()
             if sessions:
                 latest_id = sessions[0]["session_id"]
@@ -88,6 +88,58 @@ class SessionManager:
         s_dir = self.base_dir / session_id
         s_dir.mkdir(parents=True, exist_ok=True)
         return s_dir
+
+    def get_session_log_file(self, session_id: Optional[str] = None) -> Path:
+        """Return path to the session_log.jsonl for the specified or active session."""
+        s_id = session_id or (self.active_session.session_id if self.active_session else "default")
+        return self.get_session_dir(s_id) / "session_log.jsonl"
+
+    def log_event(self, event: dict, session_id: Optional[str] = None) -> None:
+        """Log a structured event directly into the active session log with isolation."""
+        log_file = self.get_session_log_file(session_id)
+        with open(log_file, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+    def get_tool_calls(self, session_id: Optional[str] = None) -> list[dict]:
+        """Retrieve all tool call records strictly for the specified session."""
+        log_file = self.get_session_log_file(session_id)
+        if not log_file.exists():
+            return []
+        calls = []
+        with open(log_file, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    try:
+                        entry = json.loads(line)
+                        if entry.get("type") == "tool_call":
+                            calls.append(entry)
+                    except Exception:
+                        pass
+        return calls
+
+    def get_seen_calls(self, session_id: Optional[str] = None) -> set[tuple[str, tuple]]:
+        """Return set of (tool_name, sorted_args_tuple) for duplicate prevention in active session."""
+        tool_calls = self.get_tool_calls(session_id)
+        seen = set()
+        for call in tool_calls:
+            tn = call.get("tool_name")
+            ta = call.get("tool_args", {})
+            if isinstance(ta, dict):
+                seen.add((tn, tuple(sorted(ta.items()))))
+        return seen
+
+    def clear_active_session_logs(self) -> None:
+        """Purge logs for current active session without affecting other sessions."""
+        if self.active_session:
+            log_file = self.get_session_log_file(self.active_session.session_id)
+            if log_file.exists():
+                try:
+                    log_file.unlink()
+                except OSError:
+                    pass
+            self.active_session.messages.clear()
+            self.save_session(self.active_session)
 
     def save_session(self, session: SessionState) -> None:
         """Persist session state and transcripts to JSONL and metadata JSON."""
@@ -178,7 +230,6 @@ class SessionManager:
         if len(session.messages) <= max_window:
             return session.messages
 
-        # Create summary from older truncated messages if not already generated
         older = session.messages[:-max_window]
         recent = session.messages[-max_window:]
 
