@@ -194,6 +194,65 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertFalse(is_tool_failure(fenced_nmap))
 
 
+    def test_r13_claim_verifier_supported_claims(self):
+        """R13: ClaimVerifier validates that claims backed by evidence graph are confirmed."""
+        from core.evidence import EvidenceGraph, ClaimVerifier
+        graph = EvidenceGraph()
+        graph.add_artifact("Port 80/tcp open http", provenance="tool_output", source_tool="nmap_security_scan")
+        verifier = ClaimVerifier(graph)
+        res = verifier.verify_final_answer("We discovered port 80 open running http service.")
+        self.assertTrue(res["verified"])
+        self.assertIn("port 80", res["supported_claims"])
+        self.assertEqual(len(res["unsupported_claims"]), 0)
+
+    def test_r14_claim_verifier_hallucinated_claims(self):
+        """R14: ClaimVerifier detects hallucinated port claims not in evidence graph."""
+        from core.evidence import EvidenceGraph, ClaimVerifier
+        graph = EvidenceGraph()
+        graph.add_artifact("Port 80/tcp open http", provenance="tool_output", source_tool="nmap_security_scan")
+        verifier = ClaimVerifier(graph)
+        res = verifier.verify_final_answer("Found port 80 and port 445 open.")
+        self.assertFalse(res["verified"])
+        self.assertIn("port 80", res["supported_claims"])
+        self.assertIn("port 445", res["unsupported_claims"])
+
+    def test_r15_engagement_report_generation(self):
+        """R15: generate_engagement_report creates Markdown report with SHA-256 hashes."""
+        from core.evidence import EvidenceGraph, generate_engagement_report
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            graph = EvidenceGraph(run_dir=tmpdir)
+            cmd = graph.add_command_artifact("nmap", ["-sV", "127.0.0.1"], target="127.0.0.1")
+            out = graph.add_output_artifact("80/tcp open http", "nmap", "127.0.0.1", command_hash=cmd.sha256)
+            graph.add_finding_artifact("HTTP Service on 80", "nmap", "127.0.0.1", evidence_hashes=[out.sha256])
+
+            report_md = generate_engagement_report(graph)
+            self.assertIn("# LONLY Pentest Engagement Report", report_md)
+            self.assertIn("Verified Findings with Cryptographic Proof", report_md)
+            self.assertIn("HTTP Service on 80", report_md)
+            self.assertIn("SHA-256 Proof Hash", report_md)
+
+    def test_r16_corrupted_evidence_detection_in_report(self):
+        """R16: Corrupted nodes are detected during graph verification."""
+        from core.evidence import EvidenceGraph, EvidenceNode
+        graph = EvidenceGraph()
+        node = graph.add_artifact("clean content", provenance="tool_output", source_tool="nmap")
+        # Tamper with content behind the SHA
+        tampered_node = EvidenceNode(
+            sha256=node.sha256,
+            content="tampered content",
+            provenance=node.provenance,
+            source_tool=node.source_tool,
+            target=node.target,
+            timestamp=node.timestamp,
+            artifact_type=node.artifact_type,
+        )
+        graph._nodes[node.sha256] = tampered_node
+        self.assertFalse(graph.verify_node(node.sha256))
+        verified, total, corrupt = graph.verify_all()
+        self.assertEqual(len(corrupt), 1)
+
+
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
     import io
@@ -214,6 +273,10 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R10 Evidence graph DAG chain verification", True, ""),
         ("R11 Provenance fencing indirect injection defense", True, ""),
         ("R12 Fenced observation parser resilience", True, ""),
+        ("R13 ClaimVerifier supported claim confirmation", True, ""),
+        ("R14 ClaimVerifier hallucinated claim interception", True, ""),
+        ("R15 Engagement report generation with SHA-256 proof", True, ""),
+        ("R16 Corrupted evidence node tamper detection", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

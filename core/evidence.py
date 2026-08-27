@@ -266,3 +266,103 @@ def strip_fences(text: str) -> str:
         '',
         text,
     ).strip()
+
+
+# ---------------------------------------------------------------------------
+# Cryptographic Claim Verifier & Engagement Report Generator
+# ---------------------------------------------------------------------------
+
+class ClaimVerifier:
+    """Verifies that statements/claims in text are backed by cryptographic evidence nodes."""
+
+    def __init__(self, graph: EvidenceGraph):
+        self.graph = graph
+
+    def verify_final_answer(self, text: str) -> dict:
+        """Scan text for claims (ports, services) and verify against evidence graph."""
+        import re
+        supported = []
+        unsupported = []
+        evidence_hashes = []
+
+        # Extract port mentions like "port 80", "80/tcp", "port 445"
+        port_matches = re.findall(r"(?:port\s+(\d+)|(\d+)/(?:tcp|udp))", text, re.IGNORECASE)
+        ports_mentioned = set()
+        for p1, p2 in port_matches:
+            port = p1 or p2
+            if port:
+                ports_mentioned.add(port)
+
+        for port in sorted(ports_mentioned):
+            found_in_node = False
+            for sha, node in self.graph._nodes.items():
+                if port in node.content:
+                    found_in_node = True
+                    if sha not in evidence_hashes:
+                        evidence_hashes.append(sha)
+                    break
+            if found_in_node:
+                supported.append(f"port {port}")
+            else:
+                unsupported.append(f"port {port}")
+
+        return {
+            "verified": len(unsupported) == 0,
+            "supported_claims": supported,
+            "unsupported_claims": unsupported,
+            "evidence_hashes": evidence_hashes,
+        }
+
+
+def generate_engagement_report(graph: EvidenceGraph, title: str = "LONLY Pentest Engagement Report") -> str:
+    """Generate a cryptographic Markdown engagement report from an EvidenceGraph."""
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    verified, total, corrupt = graph.verify_all()
+    
+    findings = [n for n in graph._nodes.values() if n.artifact_type == "finding"]
+    commands = [n for n in graph._nodes.values() if n.artifact_type == "command"]
+    outputs = [n for n in graph._nodes.values() if n.artifact_type == "raw_output"]
+
+    lines = [
+        f"# {title}",
+        f"**Generated:** {ts} | **Integrity Status:** {verified}/{total} verified ({'CORRUPT' if corrupt else 'OK'})",
+        "",
+        "## Executive Summary",
+        f"- **Total Discovered Findings:** {len(findings)}",
+        f"- **Commands Executed:** {len(commands)}",
+        f"- **Raw Tool Observations:** {len(outputs)}",
+        "",
+        "## Verified Findings with Cryptographic Proof",
+        "| Severity | Finding | Target | Tool | SHA-256 Proof Hash |",
+        "|:---|:---|:---|:---|:---|",
+    ]
+
+    if not findings:
+        lines.append("| Info | No positive findings discovered | - | - | - |")
+    else:
+        for f in findings:
+            sev = f.metadata.get("severity", "info").upper()
+            lines.append(f"| {sev} | {f.content} | `{f.target}` | `{f.source_tool}` | `{f.sha256[:16]}...` |")
+
+    lines.extend([
+        "",
+        "## Cryptographic Evidence Chain (DAG)",
+    ])
+
+    for f in findings:
+        chain = graph.get_chain(f.sha256)
+        lines.append(f"### Finding: {f.content}")
+        lines.append(f"**Hash:** `{f.sha256}`")
+        for parent in chain[1:]:
+            lines.append(f"- **{parent.artifact_type.upper()}** (`{parent.source_tool}`) — Hash: `{parent.sha256[:16]}...`")
+        lines.append("")
+
+    report_md = "\n".join(lines)
+    if graph.run_dir:
+        report_path = os.path.join(graph.run_dir, "report.md")
+        try:
+            with open(report_path, "w", encoding="utf-8") as fh:
+                fh.write(report_md)
+        except Exception:
+            pass
+    return report_md
