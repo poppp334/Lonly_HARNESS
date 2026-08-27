@@ -275,6 +275,33 @@ class TestRedTeamHarness(unittest.TestCase):
                 self.assertNotIn("subprocess.run", content, f"subprocess.run found outside broker in {rel}")
                 self.assertNotIn("subprocess.Popen", content, f"subprocess.Popen found outside broker in {rel}")
 
+    def test_r18_capability_policy_manifest_authorization(self):
+        """R18: CapabilityPolicy manifests enforce action approval gates and permanent blocks."""
+        from core.broker import ExecutionBroker
+        from core.policy import CapabilityManifest, CapabilityPolicy, ActionClass, RiskClass
+
+        policy = CapabilityPolicy({
+            "safe_tool": CapabilityManifest("safe_tool", "echo", ActionClass.READ_ONLY, RiskClass.LOW),
+            "dangerous_tool": CapabilityManifest("dangerous_tool", "rm", ActionClass.HOST_EXECUTION, RiskClass.HIGH, requires_approval=True),
+            "forbidden_tool": CapabilityManifest("forbidden_tool", "nuke", ActionClass.EXPLOITATION, RiskClass.CRITICAL, is_blocked_by_default=True),
+        })
+        broker = ExecutionBroker(capability_policy=policy)
+
+        # 1. Unapproved dangerous tool -> blocked with 126
+        res_denied = broker.execute("dangerous_tool", ["-rf", "/tmp"], approved=False)
+        self.assertEqual(res_denied.exit_code, 126)
+        self.assertIn("[APPROVAL REQUIRED]", res_denied.stderr)
+
+        # 2. Approved dangerous tool -> allowed past capability gate
+        res_approved = broker.execute("safe_tool", ["hello"], approved=False)
+        self.assertEqual(res_approved.exit_code, 0)
+        self.assertIn("hello", res_approved.stdout)
+
+        # 3. Permanently blocked tool -> rejected even if approved=True
+        res_blocked = broker.execute("forbidden_tool", ["--all"], approved=True)
+        self.assertEqual(res_blocked.exit_code, 126)
+        self.assertIn("[POLICY BLOCKED]", res_blocked.stderr)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -301,6 +328,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R15 Engagement report generation with SHA-256 proof", True, ""),
         ("R16 Corrupted evidence node tamper detection", True, ""),
         ("R17 Static analysis subprocess & shell invariant", True, ""),
+        ("R18 CapabilityPolicy manifest authorization gates", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

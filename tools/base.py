@@ -67,6 +67,7 @@ def run_argv(
     target: Optional[str] = None,
     timeout: int = 120,
     max_output: int = 4000,
+    approved: bool = False,
     broker: Optional[ExecutionBroker] = None,
 ) -> str:
     """Execute a tool via structured argv vector without shell (shell=False).
@@ -77,7 +78,7 @@ def run_argv(
     if pa is not None and hasattr(pa, "run_argv"):
         pa_fn = getattr(pa, "run_argv")
         if callable(pa_fn) and pa_fn is not run_argv:
-            return pa_fn(executable, argv, target=target, timeout=timeout, max_output=max_output, broker=broker)
+            return pa_fn(executable, argv, target=target, timeout=timeout, max_output=max_output, approved=approved, broker=broker)
     if pa is not None and hasattr(pa, "run_cmd"):
         pa_fn = getattr(pa, "run_cmd")
         if callable(pa_fn) and pa_fn is not run_cmd:
@@ -91,6 +92,7 @@ def run_argv(
         target=target,
         timeout=timeout,
         max_output=max_output,
+        approved=approved,
     )
     return res.output
 

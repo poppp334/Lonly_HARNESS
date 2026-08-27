@@ -60,11 +60,11 @@ DEFAULT_LIMIT = 4000
 def main() -> int:
     calls: list[tuple[str, list[str], int]] = []
 
-    def fake_run_argv(executable, argv, target=None, timeout=120, max_output=4000, broker=None):
+    def fake_run_argv(executable, argv, target=None, timeout=120, max_output=4000, approved=False, broker=None, **kwargs):
         calls.append((executable, list(argv), max_output))
         return "FAKE OUTPUT\n" * 100
 
-    def fake_run_cmd(cmd, timeout=120, max_output=4000):
+    def fake_run_cmd(cmd, timeout=120, max_output=4000, **kwargs):
         calls.append((cmd, [], max_output))
         return "FAKE OUTPUT\n" * 100
 

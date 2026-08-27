@@ -16,7 +16,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 
-from core.policy import TargetPolicy
+from core.policy import DEFAULT_CAPABILITY_POLICY, CapabilityPolicy, TargetPolicy
 from core.vault import DEFAULT_VAULT, SecretVault
 
 
@@ -42,9 +42,15 @@ class ExecutionResult:
 class ExecutionBroker:
     """Central execution broker enforcing policy, secret redaction, and deterministic process execution."""
 
-    def __init__(self, policy: Optional[TargetPolicy] = None, vault: Optional[SecretVault] = None):
+    def __init__(
+        self,
+        policy: Optional[TargetPolicy] = None,
+        vault: Optional[SecretVault] = None,
+        capability_policy: Optional[CapabilityPolicy] = None,
+    ):
         self.policy = policy or TargetPolicy()
         self.vault = vault or DEFAULT_VAULT
+        self.capability_policy = capability_policy or DEFAULT_CAPABILITY_POLICY
         self.execution_history: list[ExecutionResult] = []
 
     def execute(
@@ -54,14 +60,30 @@ class ExecutionBroker:
         target: Optional[str] = None,
         timeout: int = 120,
         max_output: int = 4000,
+        approved: bool = False,
         cwd: Optional[str] = None,
         env: Optional[dict[str, str]] = None,
     ) -> ExecutionResult:
-        """Execute a binary with strict argv array (shell=False)."""
+        """Execute a binary with strict argv array (shell=False) under policy authorization."""
         exec_id = f"exec_{uuid.uuid4().hex[:12]}"
         ts = time.strftime("%Y-%m-%dT%H:%M:%S")
 
-        # 1. Target Scope Policy Check (if target provided)
+        # 1. Capability Policy Authorization Check
+        allowed, reason = self.capability_policy.authorize(executable, has_operator_approval=approved)
+        if not allowed:
+            return ExecutionResult(
+                execution_id=exec_id,
+                executable=executable,
+                argv=argv,
+                stdout="",
+                stderr=reason,
+                exit_code=126,
+                duration_ms=0.0,
+                timestamp=ts,
+                output=reason,
+            )
+
+        # 2. Target Scope Policy Check (if target provided)
         if target:
             if not self.policy.is_in_scope(target):
                 blocked_msg = (
@@ -80,10 +102,12 @@ class ExecutionBroker:
                     output=blocked_msg,
                 )
 
-        # 2. Binary Path Resolution
-        resolved_bin = shutil.which(executable)
+        # 3. Binary Path Resolution (resolve capability executable if manifested)
+        manifest = self.capability_policy.get(executable)
+        bin_name = manifest.executable if (manifest and manifest.executable) else executable
+        resolved_bin = shutil.which(bin_name)
         if not resolved_bin:
-            err_msg = f"[TOOL ERROR] Executable '{executable}' not found in PATH."
+            err_msg = f"[TOOL ERROR] Executable '{bin_name}' not found in PATH."
             return ExecutionResult(
                 execution_id=exec_id,
                 executable=executable,

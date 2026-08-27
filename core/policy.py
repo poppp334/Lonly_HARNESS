@@ -122,13 +122,136 @@ class TargetPolicy:
         return False
 
 
+from enum import Enum
+
+
+class ActionClass(str, Enum):
+    """Categorization of tool action types for policy evaluation."""
+    READ_ONLY = "READ_ONLY"
+    ENUMERATION = "ENUMERATION"
+    AUTHENTICATION_TEST = "AUTHENTICATION_TEST"
+    EXPLOITATION = "EXPLOITATION"
+    HOST_EXECUTION = "HOST_EXECUTION"
+
+
+class RiskClass(str, Enum):
+    """Multi-dimensional risk classification."""
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class NetworkAccess(str, Enum):
+    """Network directionality requirements."""
+    NONE = "NONE"
+    OUTBOUND = "OUTBOUND"
+    INBOUND = "INBOUND"
+    FULL = "FULL"
+
+
 @dataclass
-class CapabilityDescriptor:
-    """Specification of an authorized security capability."""
-    name: str
-    executable: str
-    action_class: str  # recon, web, creds, infra, privesc
-    risk_points: int = 1
-    requires_confirmation: bool = False
+class CapabilityManifest:
+    """Formal security manifest specifying tool execution parameters and authorization bounds."""
+    capability_id: str = ""
+    executable: str = ""
+    action_class: ActionClass | str = ActionClass.READ_ONLY
+    risk_class: RiskClass | str = RiskClass.LOW
+    network_access: NetworkAccess | str = NetworkAccess.OUTBOUND
+    credentials_required: bool = False
+    requires_approval: bool = False
     is_blocked_by_default: bool = False
+    max_duration: int = 120
+    max_output: int = 4000
+    rate_limit_per_min: int = 60
+    sandbox_profile: str = "default"
+    risk_points: int = 1
     risk_description: str = ""
+    version: str = "1.0.0"
+    name: str = ""
+    requires_confirmation: bool = False
+
+    def __post_init__(self):
+        if not self.capability_id and self.name:
+            self.capability_id = self.name
+        if not self.name and self.capability_id:
+            self.name = self.capability_id
+        if self.requires_confirmation:
+            self.requires_approval = True
+        if self.requires_approval:
+            self.requires_confirmation = True
+
+
+# Backwards compatibility alias
+CapabilityDescriptor = CapabilityManifest
+
+
+class CapabilityPolicy:
+    """Deterministic capability authorization policy engine."""
+
+    def __init__(self, manifests: Optional[dict[str, CapabilityManifest]] = None):
+        self._manifests: dict[str, CapabilityManifest] = manifests or self._default_manifests()
+
+    def register(self, manifest: CapabilityManifest) -> None:
+        self._manifests[manifest.capability_id] = manifest
+        self._manifests[manifest.executable] = manifest
+
+    def get(self, identifier: str) -> Optional[CapabilityManifest]:
+        return self._manifests.get(identifier)
+
+    def authorize(
+        self, capability_name: str, has_operator_approval: bool = False
+    ) -> tuple[bool, str]:
+        """Authorize capability execution against policy."""
+        manifest = self.get(capability_name)
+        if manifest is None:
+            # If not explicitly manifested, allow default LOW risk or require approval for dangerous names
+            return True, "Default authorized"
+
+        if manifest.is_blocked_by_default:
+            return False, f"[POLICY BLOCKED] Capability '{manifest.capability_id}' is permanently blocked by policy."
+
+        if manifest.requires_approval and not has_operator_approval:
+            return False, (
+                f"[APPROVAL REQUIRED] Capability '{manifest.capability_id}' requires explicit operator approval "
+                f"({manifest.risk_description or manifest.risk_class})."
+            )
+
+        return True, "Authorized"
+
+    @classmethod
+    def _default_manifests(cls) -> dict[str, CapabilityManifest]:
+        manifests: dict[str, CapabilityManifest] = {}
+        defaults = [
+            CapabilityManifest("nmap_security_scan", "nmap", ActionClass.ENUMERATION, RiskClass.LOW, risk_points=1),
+            CapabilityManifest("rustscan_port_scan", "rustscan", ActionClass.ENUMERATION, RiskClass.LOW, risk_points=1),
+            CapabilityManifest("masscan_port_scan", "masscan", ActionClass.ENUMERATION, RiskClass.LOW, risk_points=1),
+            CapabilityManifest("whatweb_web_fingerprint", "whatweb", ActionClass.READ_ONLY, RiskClass.LOW, risk_points=1),
+            CapabilityManifest("gobuster_directory_scan", "gobuster", ActionClass.ENUMERATION, RiskClass.LOW, max_output=3000, risk_points=1),
+            CapabilityManifest("ffuf_web_fuzz", "ffuf", ActionClass.ENUMERATION, RiskClass.LOW, max_output=3000, risk_points=1),
+            CapabilityManifest("nikto_web_scan", "nikto", ActionClass.ENUMERATION, RiskClass.MEDIUM, risk_points=1, risk_description="intrusive web vulnerability scan"),
+            CapabilityManifest("sqlmap_vulnerability_assessment", "sqlmap", ActionClass.EXPLOITATION, RiskClass.HIGH, risk_points=1, risk_description="automated SQL injection testing"),
+            CapabilityManifest("wpscan_wordpress_audit", "wpscan", ActionClass.ENUMERATION, RiskClass.LOW, risk_points=1),
+            CapabilityManifest("enum4linux_smb_audit", "enum4linux", ActionClass.ENUMERATION, RiskClass.MEDIUM, risk_points=1, risk_description="SMB protocol enumeration"),
+            CapabilityManifest("crackmapexec", "crackmapexec", ActionClass.AUTHENTICATION_TEST, RiskClass.HIGH, credentials_required=True, requires_approval=True, risk_points=2, risk_description="network authentication and credential spraying"),
+            CapabilityManifest("ldap_search_enumeration", "ldapsearch", ActionClass.ENUMERATION, RiskClass.LOW, risk_points=1),
+            CapabilityManifest("kerbrute_active_directory_assessment", "kerbrute", ActionClass.AUTHENTICATION_TEST, RiskClass.MEDIUM, risk_points=1),
+            CapabilityManifest("hydra_brute_force", "hydra", ActionClass.AUTHENTICATION_TEST, RiskClass.HIGH, credentials_required=True, requires_approval=True, risk_points=2, risk_description="network service brute-forcing"),
+            CapabilityManifest("searchsploit_exploit_lookup", "searchsploit", ActionClass.READ_ONLY, RiskClass.LOW, network_access=NetworkAccess.NONE, risk_points=1),
+            CapabilityManifest("metasploit_auxiliary_scanner", "msfconsole", ActionClass.EXPLOITATION, RiskClass.HIGH, requires_approval=True, risk_points=2, risk_description="Metasploit auxiliary scanner execution"),
+            CapabilityManifest("linpeas_privilege_escalation_scan", "linpeas.sh", ActionClass.ENUMERATION, RiskClass.MEDIUM, max_output=5000, risk_points=1),
+            CapabilityManifest("reverse_shell_listener", "nc", ActionClass.HOST_EXECUTION, RiskClass.HIGH, network_access=NetworkAccess.INBOUND, risk_points=1),
+            CapabilityManifest("impacket_tool_execute", "impacket", ActionClass.AUTHENTICATION_TEST, RiskClass.HIGH, credentials_required=True, risk_points=1),
+            CapabilityManifest("curl_web_request", "curl", ActionClass.READ_ONLY, RiskClass.LOW, risk_points=1),
+            CapabilityManifest("shell_exec", "sh", ActionClass.HOST_EXECUTION, RiskClass.CRITICAL, requires_approval=True, max_output=3000, risk_points=2, risk_description="arbitrary host system command execution"),
+            CapabilityManifest("cve_lookup", "cve_lookup", ActionClass.READ_ONLY, RiskClass.LOW, risk_points=1),
+            CapabilityManifest("bloodhound_analyze", "bloodhound", ActionClass.READ_ONLY, RiskClass.LOW, network_access=NetworkAccess.NONE, risk_points=1),
+            CapabilityManifest("rag_query", "rag_query", ActionClass.READ_ONLY, RiskClass.LOW, network_access=NetworkAccess.NONE, risk_points=1),
+        ]
+        for m in defaults:
+            manifests[m.capability_id] = m
+            manifests[m.executable] = m
+        return manifests
+
+
+DEFAULT_CAPABILITY_POLICY = CapabilityPolicy()
