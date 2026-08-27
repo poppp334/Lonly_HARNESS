@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import json
 import zipfile
+from typing import Optional
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 import networkx as nx
 import requests
 
-from tools.base import run_cmd
+import os
+import shutil
+from tools.base import run_cmd, clean_target, find_wordlist
 
 try:
     from langchain_huggingface import HuggingFaceEmbeddings
@@ -28,31 +31,31 @@ class SearchsploitInput(BaseModel):
 
 
 class LinpeasScanInput(BaseModel):
-    script_path: str = Field(default="/usr/share/peass/linpeas/linpeas.sh", description="The absolute path to the linpeas.sh script.")
+    script_path: Optional[str] = Field(default=None, description="Path to linpeas.sh script. If None, auto-locates.")
 
 
 class ImpacketToolInput(BaseModel):
-    tool_name: str = Field(..., description="The specific Impacket tool script name (e.g., 'impacket-secretsdump').")
-    target: str = Field(..., description="The target IP address or hostname of the Windows system.")
-    connection_string: str = Field(..., description="The authentication identity string format: 'domain/username:password'.")
-    extra_args: str = Field(default="", description="Optional additional command arguments.")
+    tool_name: str = Field(..., description="The specific Impacket tool name (e.g., 'GetNPUsers.py', 'secretsdump.py').")
+    target: str = Field(..., description="Target IP address or hostname.")
+    connection_string: str = Field(..., description="Authentication string format: 'domain/username:password' or 'username:password'.")
+    extra_args: str = Field(default="", description="Optional additional command flags.")
 
 
 class ShellExecInput(BaseModel):
-    cmd: str = Field(..., description="The exact and complete shell command to execute on the local environment.")
-    timeout: int = Field(default=60, description="The maximum execution time allowed in seconds.")
+    cmd: str = Field(..., description="The exact shell command to execute on the local system.")
+    timeout: int = Field(default=60, description="Execution timeout in seconds (5-300).")
 
 
 class CVELookupInput(BaseModel):
-    query: str = Field(..., description="The vulnerability identifier (CVE) or software detail to lookup.")
+    query: str = Field(..., description="The vulnerability identifier (e.g., 'CVE-2021-3156') or software keyword.")
 
 
 class BloodhoundAnalyzeInput(BaseModel):
-    zip_path: str = Field(..., description="The absolute file path to the SharpHound data collection .zip archive.")
+    zip_path: str = Field(..., description="Absolute file path to the SharpHound data collection .zip archive.")
 
 
 class RAGQueryInput(BaseModel):
-    query: str = Field(..., description="The specific cybersecurity question or technique to search in knowledge base.")
+    query: str = Field(..., description="The specific cybersecurity topic or technique to retrieve.")
 
 
 rag_vectorstore = None
@@ -65,57 +68,78 @@ def rag_query(query: str) -> str:
     if rag_vectorstore is None:
         if HuggingFaceEmbeddings is None or Chroma is None:
             return "RAG dependencies not installed."
+        if not os.path.exists("chroma_db"):
+            return "Knowledge base not initialized. Run python ingest_knowledge.py to build index."
         try:
             embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
             rag_vectorstore = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
         except Exception as e:
             return f"RAG initialization failed: {e}"
-    docs = rag_vectorstore.similarity_search(query, k=3)
-    if not docs:
-        return "No relevant knowledge found."
-    results = []
-    for d in docs:
-        source = d.metadata.get("source", "unknown")
-        results.append(f"[Source: {source}]\n{d.page_content}")
-    return "\n\n---\n".join(results)
+    try:
+        docs = rag_vectorstore.similarity_search(query, k=3)
+        if not docs:
+            return "No relevant knowledge found."
+        results = []
+        for d in docs:
+            source = d.metadata.get("source", "unknown")
+            results.append(f"[Source: {source}]\n{d.page_content}")
+        return "\n\n---\n".join(results)
+    except Exception as e:
+        return f"RAG query error: {e}"
 
 
 @tool(args_schema=SearchsploitInput)
 def searchsploit_exploit_lookup(query: str) -> str:
     """Search the local Exploit-DB archive using Searchsploit to find known public exploits."""
-    cmd = f"searchsploit {query}"
+    clean_q = query.strip().replace(";", "").replace("&", "")
+    cmd = f"searchsploit {clean_q}"
     return run_cmd(cmd, timeout=60)
 
 
 @tool(args_schema=LinpeasScanInput)
-def linpeas_privilege_escalation_scan(script_path: str = "/usr/share/peass/linpeas/linpeas.sh") -> str:
-    """Run LinPEAS locally to discover system misconfigurations or stored credentials."""
-    cmd = f"sh {script_path} -s -q"
+def linpeas_privilege_escalation_scan(script_path: Optional[str] = None) -> str:
+    """Run LinPEAS locally to discover system misconfigurations, SUID binaries, or stored credentials."""
+    target_script = find_wordlist(
+        script_path or "/usr/share/peass-ng/linux/linpeas.sh",
+        [
+            "/usr/share/peass/linpeas/linpeas.sh",
+            "/usr/local/bin/linpeas.sh",
+            "/opt/linpeas.sh",
+            "/tmp/linpeas.sh",
+        ],
+    )
+    if not (os.path.exists(target_script) and os.path.isfile(target_script)):
+        return f"[TOOL ERROR] linpeas.sh script not found at {target_script}. Install with: sudo apt install peass-ng"
+    cmd = f"sh {target_script} -s -q"
     return run_cmd(cmd, timeout=240, max_output=5000)
 
 
 @tool(args_schema=ImpacketToolInput)
 def impacket_tool_execute(tool_name: str, target: str, connection_string: str, extra_args: str = "") -> str:
     """Execute various Impacket framework tools for Windows/Active Directory assessment."""
-    cmd = f"{tool_name} '{connection_string}'@{target} {extra_args}".strip()
+    host = clean_target(target)
+    bin_name = tool_name.strip()
+    cmd = f"{bin_name} '{connection_string}'@{host} {extra_args}".strip()
     return run_cmd(cmd, timeout=180)
 
 
 @tool(args_schema=ShellExecInput)
 def shell_exec(cmd: str, timeout: int = 60) -> str:
     """Execute an arbitrary shell command on the host system. Use with extreme caution."""
-    return run_cmd(cmd, timeout=timeout, max_output=3000)
+    safe_timeout = max(5, min(int(timeout), 300))
+    return run_cmd(cmd, timeout=safe_timeout, max_output=3000)
 
 
 @tool(args_schema=CVELookupInput)
 def cve_lookup(query: str) -> str:
     """Lookup vulnerability details from NVD API and check local Exploit-DB archive."""
     results = []
+    clean_q = query.strip()
     try:
-        if query.upper().startswith("CVE-"):
-            url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={query}"
+        if clean_q.upper().startswith("CVE-"):
+            url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={clean_q.upper()}"
         else:
-            url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={requests.utils.quote(query)}"
+            url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={requests.utils.quote(clean_q)}"
         resp = requests.get(url, timeout=15)
         if resp.status_code == 200:
             data = resp.json()
@@ -127,9 +151,10 @@ def cve_lookup(query: str) -> str:
                 cvss = metrics[0].get("cvssData", {}).get("baseScore", "") if metrics else ""
                 exploit_msg = "No public exploit found in local DB"
                 try:
-                    ss_out = run_cmd(f"searchsploit --cve {cve_id} -w", timeout=10)
-                    if "Exploit" in ss_out and "No Results" not in ss_out:
-                        exploit_msg = "Public exploit available"
+                    if shutil.which("searchsploit"):
+                        ss_out = run_cmd(f"searchsploit --cve {cve_id} -w", timeout=10)
+                        if "Exploit" in ss_out and "No Results" not in ss_out:
+                            exploit_msg = "Public exploit available"
                 except Exception:
                     pass
                 results.append(f"{cve_id} | CVSS v3: {cvss} | Exploit: {exploit_msg}\n{desc}")
@@ -137,12 +162,14 @@ def cve_lookup(query: str) -> str:
             return f"NVD API returned status code {resp.status_code}"
     except Exception as e:
         return f"CVE lookup failed: {str(e)}"
-    return "\n\n".join(results) if results else "No CVEs found for this query."
+    return "\n\n".join(results) if results else f"No CVEs found for query '{clean_q}'."
 
 
 @tool(args_schema=BloodhoundAnalyzeInput)
 def bloodhound_analyze(zip_path: str) -> str:
     """Analyze a SharpHound collection zip file locally using an in-memory directed graph (NetworkX)."""
+    if not (os.path.exists(zip_path) and os.path.isfile(zip_path)):
+        return f"[TOOL ERROR] BloodHound zip file not found at '{zip_path}'"
     G = nx.DiGraph()
     try:
         with zipfile.ZipFile(zip_path, 'r') as zh:

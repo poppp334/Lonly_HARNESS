@@ -7,6 +7,8 @@ Stdlib only.
 
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 import sys
 
@@ -20,6 +22,39 @@ TOOL_FAILURE_PATTERNS = [
     "No such file or directory",
     "Permission denied",
 ]
+
+
+def clean_target(target: str) -> str:
+    """Sanitize target host/IP string by stripping protocols and path segments."""
+    if not target:
+        return ""
+    t = target.strip()
+    # Strip protocol prefix e.g. http://, https://, smb://
+    t = re.sub(r"^[a-zA-Z0-9+.-]+://", "", t)
+    # Strip Windows share prefix \\
+    t = t.lstrip("\\/")
+    # Strip URL paths or queries if accidentally passed to host tools
+    t = t.split("/")[0].split("?")[0].strip()
+    return t
+
+
+def ensure_url(url: str, default_scheme: str = "http://") -> str:
+    """Ensure a URL has a valid http/https scheme."""
+    if not url:
+        return ""
+    u = url.strip()
+    if not (u.startswith("http://") or u.startswith("https://")):
+        u = default_scheme + u
+    return u
+
+
+def find_wordlist(preferred: str, fallbacks: list[str] | None = None) -> str:
+    """Returns the first existing wordlist path, falling back gracefully."""
+    candidates = [preferred] + (fallbacks or [])
+    for p in candidates:
+        if os.path.exists(p) and os.path.isfile(p):
+            return p
+    return preferred
 
 
 def _exec_cmd(cmd: str, timeout: int = 120, max_output: int = 4000) -> str:

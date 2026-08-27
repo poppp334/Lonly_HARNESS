@@ -10,40 +10,44 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 
-from tools.base import run_cmd
+import shutil
+from tools.base import run_cmd, clean_target, find_wordlist
 
 
 class CrackMapExecInput(BaseModel):
-    target: str = Field(description="เป้าหมายที่ต้องการทดสอบ เช่น IP, ช่วง IP หรือวงเครือข่าย CIDR")
-    protocol: Literal["smb", "ssh", "winrm", "mssql", "ftp", "ldap"] = Field(default="smb", description="โปรโตคอล/บริการที่ต้องการตรวจสอบ")
-    username: str = Field(default="", description="ชื่อผู้ใช้งานสำหรับการทดสอบสิทธิ์การเข้าถึง")
-    password: str = Field(default="", description="รหัสผ่าน หรือ NTLM Hash")
-    exec_cmd: str = Field(default="", description="Remote Command Execution หลังยึดสิทธิ์สำเร็จ (เช่น 'whoami')")
+    target: str = Field(..., description="The target IP address, hostname, or CIDR range.")
+    protocol: Literal["smb", "ssh", "winrm", "mssql", "ftp", "ldap"] = Field(default="smb", description="Protocol service to test (smb, ssh, winrm, mssql, ftp, ldap).")
+    username: str = Field(default="", description="Username for authentication testing.")
+    password: str = Field(default="", description="Password or NTLM Hash for authentication testing.")
+    exec_cmd: str = Field(default="", description="Remote command to execute upon successful authentication (e.g., 'whoami').")
 
 
 class HydraInput(BaseModel):
     target: str = Field(..., description="The target IP address or hostname.")
-    service: str = Field(..., description="The protocol service to brute-force (e.g., 'ssh', 'ftp').")
+    service: str = Field(..., description="The protocol service to brute-force (e.g., 'ssh', 'ftp', 'http-get', 'rdp', 'smb').")
     username: Optional[str] = Field(default=None, description="A single specific username to test.")
-    user_list: str = Field(default="/usr/share/wordlists/metasploit/namelist.txt", description="Path to a username wordlist file.")
+    user_list: Optional[str] = Field(default=None, description="Path to a username wordlist file.")
     password: Optional[str] = Field(default=None, description="A single specific password to test.")
-    password_list: str = Field(default="/usr/share/wordlists/dirb/common.txt", description="Path to the password wordlist file.")
+    password_list: Optional[str] = Field(default=None, description="Path to a password wordlist file.")
 
 
 class MetasploitAuxInput(BaseModel):
-    module: str = Field(..., description="The exact Metasploit auxiliary module path (e.g., 'scanner/smb/smb_version').")
+    module: str = Field(..., description="Metasploit auxiliary module path (e.g., 'scanner/smb/smb_version' or 'scanner/portscan/tcp').")
     rhosts: str = Field(..., description="The target IP address or network range.")
 
 
 class ReverseShellListenerInput(BaseModel):
-    port: int = Field(..., description="The local port number on the attacker machine to listen on.")
+    port: int = Field(..., description="The local port number to listen on.")
     listen_timeout: int = Field(default=60, description="Time in seconds to wait for an incoming connection.")
 
 
 @tool(args_schema=CrackMapExecInput)
 def crackmapexec(target: str, protocol: str = "smb", username: str = "", password: str = "", exec_cmd: str = "") -> str:
-    """CrackMapExec (CME) - เครื่องมือประเมินความปลอดภัยระบบเครือข่ายภายใน กวาดตรวจสอบพอร์ต บริการ และทดสอบเดารหัสผ่าน"""
-    base_cmd = f"nxc {protocol} {target}"
+    """Network authentication testing, service scanning, and password validation via CrackMapExec / NetExec."""
+    host = clean_target(target)
+    bin_name = "nxc" if shutil.which("nxc") else "crackmapexec"
+    valid_proto = protocol.lower() if protocol.lower() in ("smb", "ssh", "winrm", "mssql", "ftp", "ldap") else "smb"
+    base_cmd = f"{bin_name} {valid_proto} {host}"
     if username:
         base_cmd += f" -u '{username}'"
     if password:
@@ -56,19 +60,48 @@ def crackmapexec(target: str, protocol: str = "smb", username: str = "", passwor
     return run_cmd(base_cmd, timeout=180)
 
 
+def _map_service_name(service: str) -> str:
+    """Maps common port numbers or protocol aliases to Hydra service names."""
+    s = service.strip().lower()
+    port_map = {
+        "21": "ftp", "22": "ssh", "23": "telnet", "25": "smtp",
+        "80": "http-get", "443": "https-get", "110": "pop3",
+        "143": "imap", "445": "smb", "3306": "mysql", "3389": "rdp",
+        "5432": "postgres", "5900": "vnc", "8080": "http-get",
+    }
+    return port_map.get(s, s)
+
+
 @tool(args_schema=HydraInput)
-def hydra_brute_force(target: str, service: str, username: Optional[str] = None, user_list: str = "/usr/share/wordlists/metasploit/namelist.txt", password: Optional[str] = None, password_list: str = "/usr/share/wordlists/dirb/common.txt") -> str:
+def hydra_brute_force(
+    target: str,
+    service: str,
+    username: Optional[str] = None,
+    user_list: Optional[str] = None,
+    password: Optional[str] = None,
+    password_list: Optional[str] = None,
+) -> str:
     """Execute network login brute-forcing or dictionary attacks against various services using Hydra."""
+    host = clean_target(target)
+    svc = _map_service_name(service)
     args = ["hydra"]
     if username:
         args.extend(["-l", username])
     else:
-        args.extend(["-L", user_list])
+        ul = find_wordlist(
+            user_list or "/usr/share/wordlists/metasploit/namelist.txt",
+            ["/usr/share/seclists/Usernames/top-usernames-short.txt", "/usr/share/wordlists/dirb/common.txt"],
+        )
+        args.extend(["-L", ul])
     if password:
         args.extend(["-p", password])
     else:
-        args.extend(["-P", password_list])
-    args.extend(["-t", "4", "-I", target, service])
+        pl = find_wordlist(
+            password_list or "/usr/share/wordlists/dirb/common.txt",
+            ["/usr/share/wordlists/fasttrack.txt", "/usr/share/seclists/Passwords/Common-Credentials/top-20-common-passwords.txt"],
+        )
+        args.extend(["-P", pl])
+    args.extend(["-t", "4", "-I", host, svc])
     cmd = " ".join(args)
     return run_cmd(cmd, timeout=300)
 
@@ -76,12 +109,20 @@ def hydra_brute_force(target: str, service: str, username: Optional[str] = None,
 @tool(args_schema=MetasploitAuxInput)
 def metasploit_auxiliary_scanner(module: str, rhosts: str) -> str:
     """Execute a specific Metasploit Framework auxiliary module for scanning or verification."""
-    cmd = f"msfconsole -q -x \"use auxiliary/{module}; set RHOSTS {rhosts}; run; exit\""
+    host = clean_target(rhosts)
+    clean_mod = module.strip()
+    if clean_mod.startswith("auxiliary/"):
+        clean_mod = clean_mod[len("auxiliary/"):]
+    cmd = f"msfconsole -q -x \"use auxiliary/{clean_mod}; set RHOSTS {host}; run; exit\""
     return run_cmd(cmd, timeout=180, max_output=4000)
 
 
 @tool(args_schema=ReverseShellListenerInput)
 def reverse_shell_listener(port: int, listen_timeout: int = 60) -> str:
     """Set up a local network listener using Netcat (nc) to capture incoming reverse shells."""
-    cmd = f"nc -lvnp {port} -w {listen_timeout}"
+    try:
+        clean_port = int(port)
+    except (ValueError, TypeError):
+        clean_port = 4444
+    cmd = f"nc -lvnp {clean_port} -w {listen_timeout}"
     return run_cmd(cmd, timeout=listen_timeout + 10)
