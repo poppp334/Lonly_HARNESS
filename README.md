@@ -18,8 +18,10 @@ Unauthorized access to computer systems, networks, or digital infrastructure is 
 
 LONLY v2 decouples probabilistic LLM reasoning from deterministic security, isolation, and audit controls:
 
-1. **Model Boundary (`core/agent_roles.py`)**:
-   - **Generalist Planner (`gemma3:4b`)**: Proposes investigative strategy, phase progression, and target discovery without holding direct execution authority.
+1. **Dual-Mode Model Boundary (`core/agent_roles.py`, `pentest_agent.py`)**:
+   - **Mode 1: Conversational Q&A / Strategy**: Answers greetings, inquiries, and security explanations in natural markdown without executing unwanted tools.
+   - **Mode 2: Tactical Security Assessment**: Engages the ReAct execution loop when actionable target assessments are requested.
+   - **Generalist Planner (`gemma3:4b`)**: Proposes investigative strategy and target discovery without holding direct execution authority.
    - **Privilege Escalation Specialist (`privesc-llm-rl:4b`)**: Generates targeted exploitation hypotheses for Linux privilege vectors.
    - **Verifier Role**: Cryptographically validates security claims against stored artifacts.
 2. **Policy Engine (`core/policy.py`, `core/risk.py`)**:
@@ -31,7 +33,9 @@ LONLY v2 decouples probabilistic LLM reasoning from deterministic security, isol
    - **Resource Quotas & Process Group Isolation**: POSIX memory, CPU, PID limits (`SandboxProfile`), and clean process-tree termination on timeout.
 4. **Secret Management Boundary (`core/vault.py`)**:
    - Random opaque references (`cred_<hex>`), capability-scoped access, rotation, revocation, in-memory zeroization, and automatic log redaction.
-5. **Forensic Evidence & Tamper-Evident Ledger (`core/evidence.py`, `core/audit.py`, `core/telemetry.py`)**:
+5. **Persistent Session Workspaces & Memory (`core/session.py`)**:
+   - Isolated per-session JSONL workspaces (`~/.lonly/sessions/<session_id>/`), rolling context window compaction, and zero cross-session job crosstalk.
+6. **Forensic Evidence & Tamper-Evident Ledger (`core/evidence.py`, `core/audit.py`, `core/telemetry.py`)**:
    - **Content-Addressable DAG**: SHA-256 evidence graph tracking execution chains from report claims down to the exact operator and tool output.
    - **Cryptographic Audit Ledger**: HMAC-SHA256 write-ahead log (WAL) hash chaining with offline mathematical integrity verification.
    - **Distributed Tracing**: Distributed spans answering *"Why did LONLY run this action?"* in a single provenance query.
@@ -44,14 +48,14 @@ LONLY v2 decouples probabilistic LLM reasoning from deterministic security, isol
                                 │
                                 ▼
                      ┌─────────────────────┐
-                     │ Engagement Service  │
-                     │  (core/engagement)  │
+                     │ Session & Engagement│
+                     │ (core/session, eng) │
                      └──────────┬──────────┘
                                 │
                                 ▼
                      ┌─────────────────────┐
-                     │    Agent Runtime    │
-                     │  Planner / PrivEsc  │
+                     │ Dual-Mode Runtime   │
+                     │ Chat Q&A / ReAct    │
                      └──────────┬──────────┘
                                 │ Structured Intent
                                 ▼
@@ -128,7 +132,7 @@ LONLY exposes **24 domain-modularized tools** organized under `tools/` with all 
 
 ## Evaluation & Adversarial Hardening Suite
 
-LONLY v2 enforces zero technical debt and 100% deterministic safety verified by **80 acceptance checks** across 8 tracks:
+LONLY v2 enforces zero technical debt and 100% deterministic safety verified by **81 acceptance checks** across 8 tracks:
 
 - **Track D (D1–D20)**: Safety, Scope, Confirmation, State & Phase Invariants
 - **Track P (P1–P9)**: ReAct, Markdown Fence, Evidence & Overclaim Interception
@@ -136,7 +140,7 @@ LONLY v2 enforces zero technical debt and 100% deterministic safety verified by 
 - **Track C (C1–C4)**: Trajectory Quality, Duplication & Truncation Bounds
 - **Track A (A1–A3)**: Scenario Replays (Web Recon, Privesc Specialist, 5-Phase Chain)
 - **Track E (E1–E5)**: Live CLI Resilience, Unicode & Human-in-the-Loop Approval
-- **Track R (R1–R35)**: Comprehensive Red Team Adversarial & Cryptographic Suite:
+- **Track R (R1–R36)**: Comprehensive Red Team Adversarial & Cryptographic Suite:
   - `R1–R5`: Shell injection, CIDR IPv6, URL spoofing & specialist broker isolation
   - `R6–R8`: SecretVault token opaque references, zeroization & credential redaction
   - `R9–R16`: SHA-256 DAG evidence graph & tamper detection
@@ -159,10 +163,11 @@ LONLY v2 enforces zero technical debt and 100% deterministic safety verified by 
   - `R33`: Transactional job queue and circuit breaker (`JobQueue`)
   - `R34`: Distributed tracing and action provenance query (`TelemetryTracer`)
   - `R35`: Strict model boundary separation (`PlannerRole`, `SpecialistRole`, `VerifierRole`)
+  - `R36`: Dual-mode conversation and persistent session workspaces (`SessionManager`)
 - **Track B (B0)**: Per-tool subprocess smoke validation across all 24 tools
 
 ```bash
-# Run complete verification harness (80/80 checks)
+# Run complete verification harness (81/81 checks)
 LONLY_EVAL_PYTHON=~/pentest_env/bin/python ~/pentest_env/bin/python eval/eval_lonly.py
 ```
 
@@ -201,13 +206,22 @@ python eval/eval_lonly.py
 python pentest_agent.py
 ```
 
+### Interactive CLI Commands
+- `[Target Objective]` — e.g., `Scan 127.0.0.1 for open ports` or ask `Explain Kerberoasting`
+- `/session list` — List all stored conversation sessions with message counts
+- `/session new [title]` — Create and switch to a fresh, isolated session workspace
+- `/session load <session_id>` — Restore a prior session transcript
+- `/report` — Generate cryptographic Markdown engagement report
+- `/clear` — Reset session memory and in-memory findings state
+- `exit` / `quit` — Shutdown LONLY
+
 ---
 
 ## Project Structure
 
 ```
 Lonly_HARNESS/
-├── pentest_agent.py          # Main interactive CLI & ReAct agent loop
+├── pentest_agent.py          # Main interactive CLI & Dual-Mode ReAct loop
 ├── core/                     # Core runtime & deterministic security boundary
 │   ├── agent_roles.py        # Planner, Specialist, and Verifier model boundaries
 │   ├── audit.py              # Cryptographic HMAC-SHA256 WAL audit ledger
@@ -225,6 +239,7 @@ Lonly_HARNESS/
 │   ├── queue.py              # Transactional job queue & circuit breaker
 │   ├── risk.py               # Multi-dimensional risk matrix & decision gates
 │   ├── sandbox.py            # OS sandbox profiles & process containment
+│   ├── session.py            # Persistent session workspaces & context management
 │   ├── state.py              # FindingsLog, TaskTree, phase routing table
 │   ├── telemetry.py          # Distributed tracing & provenance query engine
 │   └── vault.py              # Hardened SecretVault with scoping & rotation
@@ -240,11 +255,12 @@ Lonly_HARNESS/
 │   └── smoke_test.py         # Specialist verification smoke test
 ├── eval/                     # Test & Evaluation Harness
 │   ├── ci_security_gate.py   # Automated CI/CD security gate & invariant checker
-│   ├── eval_lonly.py         # Main acceptance runner (80/80 checks)
+│   ├── eval_lonly.py         # Main acceptance runner (81/81 checks)
 │   ├── track_a_runner.py     # Scenario integration suite
 │   ├── track_b_worker.py     # Subprocess-isolated tool smoke worker
 │   ├── track_c_scorer.py     # Trajectory and loop quality scorer
-│   └── track_r_redteam.py    # 35-check adversarial red team suite
+│   ├── track_e_cli.py        # CLI interactive & edge case test suite
+│   └── track_r_redteam.py    # 36-check adversarial red team suite
 ├── docs/                     # Technical specifications & roadmap
 │   ├── Plan-implement.md     # Production hardening roadmap
 │   └── cybersecurity-harness-research.md
