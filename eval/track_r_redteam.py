@@ -350,6 +350,34 @@ class TestRedTeamHarness(unittest.TestCase):
         # 4. Audit logging
         self.assertTrue(len(vault.audit_log) >= 4)
 
+    def test_r21_forensic_provenance_trail_and_context_ids(self):
+        """R21: EvidenceGraph records full contextual IDs and returns verifiable forensic provenance trails."""
+        from core.evidence import EvidenceGraph, ExecutionContext
+
+        graph = EvidenceGraph(engagement_id="ENG-2026-0042")
+        ctx = ExecutionContext(
+            engagement_id="ENG-2026-0042",
+            run_id="run_alpha",
+            task_id="task_2",
+            decision_id="dec_01",
+            approval_id="appr_01",
+            execution_id="exec_999",
+            operator="lead_pentester",
+        )
+
+        cmd = graph.add_command_artifact("nmap", ["-sV", "127.0.0.1"], target="127.0.0.1", context=ctx)
+        out = graph.add_output_artifact("22/tcp open ssh", "nmap", "127.0.0.1", command_hash=cmd.sha256, context=ctx)
+        finding = graph.add_finding_artifact("Open SSH Service", "nmap", "127.0.0.1", evidence_hashes=[out.sha256], context=ctx)
+
+        trail = graph.get_provenance_trail(finding.sha256)
+        self.assertEqual(trail["engagement_id"], "ENG-2026-0042")
+        self.assertEqual(trail["execution_id"], "exec_999")
+        self.assertEqual(trail["approval_id"], "appr_01")
+        self.assertEqual(trail["operator"], "lead_pentester")
+        self.assertEqual(trail["chain_length"], 3)
+        self.assertIn(out.sha256, trail["ancestor_hashes"])
+        self.assertIn(cmd.sha256, trail["ancestor_hashes"])
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -379,6 +407,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R18 CapabilityPolicy manifest authorization gates", True, ""),
         ("R19 ResolvedTarget destination validation & rebinding defense", True, ""),
         ("R20 SecretVault capability scoping rotation & revocation", True, ""),
+        ("R21 Forensic provenance trail and context IDs", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
