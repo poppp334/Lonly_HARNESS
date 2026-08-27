@@ -491,6 +491,24 @@ class TestRedTeamHarness(unittest.TestCase):
         # Safe process tree termination test on mock or non-existent PID
         self.assertTrue(SandboxManager.terminate_process_tree(999999))
 
+    def test_r26_engagement_manager_and_entity_hierarchy(self):
+        """R26: EngagementManager tracks full multi-entity hierarchy and operator approvals."""
+        from core.engagement import EngagementManager, UserRole
+
+        em = EngagementManager()
+        org = em.create_organization("Acme Corp")
+        user = em.create_user("lead_operator", role=UserRole.LEAD_PENTESTER)
+        eng = em.create_engagement(org.org_id, "Q3 Red Team Audit", ["192.168.1.0/24"], user.user_id)
+        run = em.start_run(eng.engagement_id)
+        task = em.create_task(run.run_id, "recon", "192.168.1.50")
+        appr = em.record_approval(eng.engagement_id, "hydra_brute_force", user.user_id, granted=True, justification="Scope confirmed")
+
+        summary = em.get_engagement_summary(eng.engagement_id)
+        self.assertEqual(summary["total_runs"], 1)
+        self.assertEqual(summary["total_approvals"], 1)
+        self.assertEqual(summary["approved_count"], 1)
+        self.assertEqual(summary["engagement"]["title"], "Q3 Red Team Audit")
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -525,6 +543,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R23 Typed claims model & ClaimVerifier verification", True, ""),
         ("R24 Structured fact extraction and prompt context hygiene", True, ""),
         ("R25 Sandbox profiles and process tree isolation", True, ""),
+        ("R26 First-class engagement model and hierarchy", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
