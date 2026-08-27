@@ -181,46 +181,48 @@ LONLY_EVAL_PYTHON=~/pentest_env/bin/python ~/pentest_env/bin/python eval/eval_lo
 ### Prerequisites
 - Linux (Debian, Ubuntu, or Kali Linux recommended)
 - Python 3.10+
-- [Ollama](https://ollama.ai/) installed and running
+- [Ollama](https://ollama.ai/) installed and running (`ollama serve`)
 
-### 1. Clone Repository
+### Quick Start with Makefile & Setup Script
 ```bash
+# 1. Clone Repository
 git clone https://github.com/poppp334/Lonly_HARNESS.git
 cd Lonly_HARNESS
+
+# 2. Automated Bootstrap (installs dependencies, pulls models, builds RAG knowledge)
+./setup.sh
+# OR via Make:
+make setup
+
+# 3. System Diagnostic & Health Check
+make doctor
+
+# 4. Run Complete Acceptance Test Suite (84/84 Checks)
+make test
+
+# 5. Launch Interactive Dual-Mode CLI Shell
+make run
 ```
 
-### 2. Install Python Dependencies
-```bash
-pip install -r requirements.txt
-```
+### Interactive CLI Commands & Navigation
+- **Arrow Key Navigation**: `↑` / `↓` cycle command history persisted in `~/.lonly/history` (1,000 commands), `←` / `→` in-line cursor editing.
+- **Tab Autocompletion**: Autocompletes `/scope`, `/session`, `/report`, `/doctor`, `/clear`, `exit`, and session IDs.
+- **Target Extraction**: RFC-compliant multi-level FQDN and IP extraction directly from conversational prompts (e.g., `webme-mu.vercel.app`).
+- **Interactive Scope Gating**: Real-time human-in-the-loop authorization prompt before any tool accesses a new network host.
 
-### 3. Pull Required Models
-```bash
-ollama pull gemma3:4b
-```
-
-### 4. Run Acceptance Tests
-```bash
-python eval/eval_lonly.py
-```
-
-### 5. Launch LONLY Interactive Shell
-```bash
-python pentest_agent.py
-```
-
-### Interactive CLI Commands
-- `[Target Objective]` — e.g., `Scan 127.0.0.1 for open ports` or ask `Explain Kerberoasting`
-- `/scope add <target>` — Add target IP, domain, or CIDR to authorized testing scope
-- `/scope list` — View all authorized target hosts and CIDRs
-- `/scope reset` — Reset scope to loopback only (127.0.0.1)
-- `/session list` — List all stored conversation sessions with message counts
-- `/session new [title]` — Create and switch to a fresh, isolated session workspace
-- `/session load <id>` — Restore a prior session transcript
-- `/report` — Generate cryptographic Markdown engagement report
-- `/doctor` — Run full system diagnostic & tool health suite
-- `/clear` — Reset session memory and in-memory findings state
-- `exit` / `quit` — Shutdown LONLY
+| Command | Action |
+| :--- | :--- |
+| `[Target Objective]` | e.g., `Scan 127.0.0.1 for open ports` or ask `Explain Kerberoasting` |
+| `/scope add <target>` | Add IP, multi-level FQDN, or CIDR to authorized testing scope |
+| `/scope list` | View all authorized target hosts and CIDRs in active session |
+| `/scope reset` | Reset scope to default loopback only (`127.0.0.1`, `localhost`, `::1`) |
+| `/session list` | List all stored conversation sessions with timestamp & message counts |
+| `/session new [title]` | Create and switch to a fresh, isolated session workspace |
+| `/session load <id>` | Restore a prior session workspace from `~/.lonly/sessions/<id>/` |
+| `/report` | Generate cryptographically signed Markdown engagement report with SHA-256 evidence chain |
+| `/doctor` | Run comprehensive system diagnostic & tool health suite |
+| `/clear` | Reset active conversation memory and in-memory findings state |
+| `exit` / `quit` | Safely shutdown LONLY |
 
 ---
 
@@ -228,13 +230,23 @@ python pentest_agent.py
 
 ```
 Lonly_HARNESS/
+├── Makefile                  # Build, test, doctor, and setup automation
+├── setup.sh                  # One-click system bootstrap & model pull script
+├── requirements.txt          # Python runtime dependencies
+├── AGENTS.md                 # Agent specifications, roles, and capability manifest
+├── LICENSE                   # MIT License
 ├── pentest_agent.py          # Main interactive CLI & Dual-Mode ReAct loop
+├── ingest_knowledge.py       # Knowledge ingestion pipeline into ChromaDB vector store
+├── knowledge/                # Markdown pentest domain knowledge & playbooks
+│   ├── kerberoasting.md      # Kerberoasting attack and defense guide
+│   └── linux-privesc.md      # Linux privilege escalation heuristics
+├── chroma_db/                # Local ChromaDB persistent vector database
 ├── core/                     # Core runtime & deterministic security boundary
 │   ├── agent_roles.py        # Planner, Specialist, and Verifier model boundaries
 │   ├── audit.py              # Cryptographic HMAC-SHA256 WAL audit ledger
 │   ├── benchmarks.py         # Ground-truth lab benchmark evaluation engine
-│   ├── broker.py             # ExecutionBroker & CapabilityPolicy enforcement
-│   ├── cli_reader.py         # Arrow key history, line editing & autocompletion
+│   ├── broker.py             # ExecutionBroker & dynamic TargetPolicy synchronization
+│   ├── cli_reader.py         # Readline arrow key history, editing & tab autocompleter
 │   ├── doctor.py             # System diagnostic and dependency health checker
 │   ├── engagement.py         # Organization, Engagement, Run, and Approval entities
 │   ├── evidence.py           # Content-addressable DAG evidence graph & TypedClaims
@@ -244,36 +256,41 @@ Lonly_HARNESS/
 │   ├── job_queue.py          # Transactional job queue & circuit breaker
 │   ├── metrics.py            # Operational metrics & zero-defect SLA engine
 │   ├── orchestrator.py       # DAG task graph orchestrator
-│   ├── parser.py             # Resilient ReAct/JSON parsing & overclaim validators
+│   ├── parser.py             # Resilient ReAct/JSON parsing & FQDN target extraction
 │   ├── policy.py             # TargetPolicy, CapabilityPolicy, ResolvedTarget
 │   ├── risk.py               # Multi-dimensional risk matrix & decision gates
 │   ├── sandbox.py            # OS sandbox profiles & process containment
-│   ├── session.py            # Persistent session workspaces & context management
+│   ├── session.py            # Persistent session workspaces (~/.lonly/sessions/)
 │   ├── state.py              # FindingsLog, TaskTree, phase routing table
 │   ├── telemetry.py          # Distributed tracing & provenance query engine
 │   └── vault.py              # Hardened SecretVault with scoping & rotation
 ├── tools/                    # Modular 24-tool subsystem (run_argv brokered)
 │   ├── __init__.py           # Central tool registry and tool_map
 │   ├── base.py               # Safe execution wrapper and output truncation
-│   ├── recon.py              # Nmap, RustScan, Masscan, WhatWeb, Enum4linux, LDAP
+│   ├── recon.py              # Nmap, RustScan (--no-banner), Masscan, WhatWeb, Enum4linux, LDAP
 │   ├── web.py                # Gobuster, Ffuf, Nikto, Sqlmap, WPScan, Curl
 │   ├── creds.py              # CrackMapExec, Hydra, Metasploit, ReverseShell
 │   └── infra.py              # LinPEAS, SearchSploit, Impacket, BloodHound, RAG
-├── models/                   # Specialist integration & training
+├── models/                   # Specialist integration & benchmark evaluation
 │   ├── privesc_protocol.py   # Specialist protocol & Ollama dispatch
-│   └── smoke_test.py         # Specialist verification smoke test
+│   ├── benchmark_runner.py   # Privilege escalation benchmark executor
+│   ├── analyze_benchmark.py  # Benchmark results statistical analyzer
+│   ├── smoke_test.py         # Specialist verification smoke test
+│   └── Modelfile.template    # Ollama specialist template
 ├── eval/                     # Test & Evaluation Harness
+│   ├── eval_lonly.py         # Main acceptance runner (84/84 checks)
 │   ├── ci_security_gate.py   # Automated CI/CD security gate & invariant checker
-│   ├── eval_lonly.py         # Main acceptance runner (83/83 checks)
-│   ├── track_a_runner.py     # Scenario integration suite
-│   ├── track_b_worker.py     # Subprocess-isolated tool smoke worker
+│   ├── track_a_runner.py     # Scenario integration suite (S1, S2, S4)
+│   ├── track_b_worker.py     # Subprocess-isolated tool smoke worker (24/24 tools)
 │   ├── track_c_scorer.py     # Trajectory and loop quality scorer
 │   ├── track_e_cli.py        # CLI interactive & edge case test suite
-│   └── track_r_redteam.py    # 38-check adversarial red team suite
+│   └── track_r_redteam.py    # 39-check adversarial red team suite (R1–R39)
+├── setup/                    # System tooling installation scripts
+│   └── install-system-tools.sh
 ├── docs/                     # Technical specifications & roadmap
 │   ├── Plan-implement.md     # Production hardening roadmap
+│   ├── architecture-upgrade-map.md
 │   └── cybersecurity-harness-research.md
-├── requirements.txt          # Python runtime dependencies
 └── README.md
 ```
 
