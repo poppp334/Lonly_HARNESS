@@ -1,6 +1,8 @@
 # LONLY — Logically Optimized Network Logistics & Intelligence
 
-An autonomous, multi-phase penetration testing and vulnerability assessment agent for Linux environments, combining a Generalist ReAct Orchestrator with a dedicated Privilege Escalation Specialist model.
+An enterprise-grade, policy-governed autonomous penetration testing and vulnerability assessment harness for Linux and network environments. LONLY enforces the core invariant:
+
+> **"The LLM proposes. Deterministic code authorizes. The broker executes. Evidence proves."**
 
 ---
 
@@ -14,64 +16,81 @@ Unauthorized access to computer systems, networks, or digital infrastructure is 
 
 ## Architecture Overview
 
-LONLY implements a hybrid architecture combining high-level autonomous planning with domain-specialized execution:
+LONLY v2 decouples probabilistic LLM reasoning from deterministic security, isolation, and audit controls:
 
-1. **Generalist Orchestrator (`gemma3:4b`)**: Manages the overarching ReAct (Reasoning + Acting) loop, user interaction, reconnaissance, web vulnerability discovery, Active Directory inspection, and report generation.
-2. **Privilege Escalation Specialist (`privesc-llm-rl:4b`)**: A specialized 4B parameter model trained via Reinforcement Learning on interactive Linux environments. It is dynamically routed when the Task Tree enters the `privesc` phase.
-3. **Structured State Machine**:
-   - **Task Tree (`core/state.py`)**: Canonical phase stack (`recon` -> `enumerate` -> `vuln_check` -> `privesc` -> `report`).
-   - **Findings Log (`core/state.py`)**: Persistent JSON findings database injected into the system prompt each turn, ensuring critical target intel survives rolling conversation window truncation.
-4. **Safety & Policy Guardrails (`core/guardrails.py`)**:
-   - **Deny-by-Default Scope Enforcement**: Target IP, CIDR, and domain allowlists evaluated prior to any tool invocation.
-   - **Multi-Tier Execution Gates**: Soft-blocks dangerous tools (`sqlmap`, `nikto`, `enum4linux`) and requires interactive human confirmation for high-impact tools (`crackmapexec`, `hydra`, `metasploit`, `shell_exec`).
-   - **Cumulative Risk Budget**: Checkpoints execution at 5 risk points for operator review (continue, stop, or redirect).
-5. **Evidence Grounding Gate (`core/parser.py`)**: Attaches an `[EVIDENCE LOG]` block citing verified command executions and raw outputs to prevent hallucinations and ungrounded breach claims.
+1. **Model Boundary (`core/agent_roles.py`)**:
+   - **Generalist Planner (`gemma3:4b`)**: Proposes investigative strategy, phase progression, and target discovery without holding direct execution authority.
+   - **Privilege Escalation Specialist (`privesc-llm-rl:4b`)**: Generates targeted exploitation hypotheses for Linux privilege vectors.
+   - **Verifier Role**: Cryptographically validates security claims against stored artifacts.
+2. **Policy Engine (`core/policy.py`, `core/risk.py`)**:
+   - **Target Scope & Socket Destination Authorization**: Canonical hostname resolution, CIDR allowlists, and DNS rebinding defense via `ResolvedTarget`.
+   - **Authoritative Capability Manifests**: Fine-grained per-tool permissions (`ActionClass`, `RiskClass`, `NetworkAccess`) and exit code `126` approval blocks.
+   - **Multi-Dimensional Risk Matrix**: Multi-vector risk scoring (destructive potential, blast radius, credential exposure) with human-in-the-loop approval gates.
+3. **Execution Broker & OS Containment (`core/broker.py`, `core/sandbox.py`)**:
+   - **Strict Subprocess Invariant**: Static AST enforcement ensuring zero `shell=True`, `os.system`, or `os.popen`. All 24 tools pass discrete `argv` vectors to `run_argv()`.
+   - **Resource Quotas & Process Group Isolation**: POSIX memory, CPU, PID limits (`SandboxProfile`), and clean process-tree termination on timeout.
+4. **Secret Management Boundary (`core/vault.py`)**:
+   - Random opaque references (`cred_<hex>`), capability-scoped access, rotation, revocation, in-memory zeroization, and automatic log redaction.
+5. **Forensic Evidence & Tamper-Evident Ledger (`core/evidence.py`, `core/audit.py`, `core/telemetry.py`)**:
+   - **Content-Addressable DAG**: SHA-256 evidence graph tracking execution chains from report claims down to the exact operator and tool output.
+   - **Cryptographic Audit Ledger**: HMAC-SHA256 write-ahead log (WAL) hash chaining with offline mathematical integrity verification.
+   - **Distributed Tracing**: Distributed spans answering *"Why did LONLY run this action?"* in a single provenance query.
 
 ```
-                      +------------------------------------------+
-                      |       Operator Objective / Request       |
-                      +--------------------+---------------------+
-                                           |
-                                           v
-+------------------------------------------------------------------------------------+
-| LONLY Generalist Orchestrator (gemma3:4b)                                          |
-|                                                                                    |
-|  [Task Tree]               [Findings Store]             [Guardrail Engine]         |
-|  Phase: recon/enum/vuln    runs/<ts>/findings.json      Scope Allowlist (IP/CIDR)  |
-|                                                         Risk Checkpoint (max 5)    |
-|                                                         Interactive Confirm Gate   |
-+------------------------------------------+-----------------------------------------+
-                                           |
-                    +----------------------+----------------------+
-                    |                                             |
-                    v (recon / web / enum / report)               v (privesc phase)
-+------------------------------------------+  +--------------------------------------+
-| Modular Tool Arsenal (24 Tools)          |  | PrivEsc Specialist Node              |
-|                                          |  | (privesc-llm-rl:4b)                  |
-| tools/recon.py   tools/web.py            |  |                                      |
-| tools/creds.py   tools/infra.py          |  | models/privesc_protocol.py           |
-+-------------------+----------------------+  +-------------------+------------------+
-                    |                                             |
-                    +----------------------+----------------------+
-                                           |
-                                           v
-+------------------------------------------------------------------------------------+
-| Grounding & Evidence Validation (core/parser.py)                                   |
-| - Fabrication & overclaim filtering                                                |
-| - Machine-logged command + output proof ([EVIDENCE LOG])                           |
-+------------------------------------------+-----------------------------------------+
-                                           |
-                                           v
-                      +--------------------+---------------------+
-                      | Verified Final Assessment & Report       |
-                      +------------------------------------------+
+                     ┌─────────────────────┐
+                     │     Operator UI     │
+                     │      REST / CLI     │
+                     └──────────┬──────────┘
+                                │
+                                ▼
+                     ┌─────────────────────┐
+                     │ Engagement Service  │
+                     │  (core/engagement)  │
+                     └──────────┬──────────┘
+                                │
+                                ▼
+                     ┌─────────────────────┐
+                     │    Agent Runtime    │
+                     │  Planner / PrivEsc  │
+                     └──────────┬──────────┘
+                                │ Structured Intent
+                                ▼
+                     ┌─────────────────────┐
+                     │ Policy Engine (PDP) │
+                     │  Scope & Manifests  │
+                     │  Multi-Dim Risk     │
+                     └──────────┬──────────┘
+                                │ Authorized Descriptors
+                                ▼
+                     ┌─────────────────────┐
+                     │  Execution Broker   │
+                     │  (core/broker.py)   │
+                     └──────────┬──────────┘
+                                │ run_argv (shell=False)
+                                ▼
+                     ┌─────────────────────┐
+                     │ Sandboxed Subprocess│
+                     │  (Resource Limits)  │
+                     └──────────┬──────────┘
+                                │
+                                ▼ Target
+                     ┌─────────────────────┐
+                     │ Cryptographic Audit │
+                     │  Evidence DAG & WAL │
+                     │  Telemetry Traces   │
+                     └──────────┬──────────┘
+                                │
+                                ▼
+                     ┌─────────────────────┐
+                     │ Signed Pentest Report│
+                     └─────────────────────┘
 ```
 
 ---
 
 ## Tool Arsenal
 
-LONLY exposes **24 domain-modularized tools** organized under `tools/`:
+LONLY exposes **24 domain-modularized tools** organized under `tools/` with all invocations brokered via discrete argument arrays:
 
 ### Reconnaissance & Port Scanning (`tools/recon.py`)
 - `rustscan_port_scan` — Full-range TCP port discovery using RustScan.
@@ -107,59 +126,45 @@ LONLY exposes **24 domain-modularized tools** organized under `tools/`:
 
 ---
 
-## Evaluation & Acceptance Harness
+## Evaluation & Adversarial Hardening Suite
 
-The repository includes an offline evaluation framework (`eval/eval_lonly.py`) with **67 acceptance checks**:
+LONLY v2 enforces zero technical debt and 100% deterministic safety verified by **80 acceptance checks** across 8 tracks:
 
-- **Track D (D1–D20)**: Guardrail policy verification, scope boundary enforcement, risk accounting, findings injection, and evidence gates.
-- **Track P (P1–P9)**: 4B-model ReAct parser resilience, markdown fence stripping, trailing comma tolerance, placeholder rejection, and overclaim validation.
-- **Track M (M1–M3)**: Modular architecture contracts, unique 24-tool registry integrity, and `run_argv` capability delegation.
-- **Track C (C1–C4)**: Trajectory loop quality, duplicate invocation detection, and maximum output character truncation compliance.
-- **Track A (A1–A3)**: Scenario integration suite simulating web reconnaissance, privilege escalation specialist routing, and full 5-phase lifecycle chains.
-- **Track E (E1–E5)**: CLI interactive engine and edge-case unit tests (command parsing, denial/approval gates, risk checkpoint stop/redirect, fabrication intercept, and Unicode/Thai handling).
-- **Track R (R1–R22)**: Adversarial red team security suite:
-  - **R1**: Shell metacharacter injection resilience (`shell=False`)
-  - **R2**: `TargetPolicy` IPv6, bracketed IPv6, and CIDR scope enforcement
-  - **R3**: URL parser confusion & credential userinfo injection resistance
-  - **R4**: `ExecutionBroker` below-agent authorization boundary
-  - **R5**: Specialist SSH backend broker isolation & scope refusal
-  - **R6**: `SecretVault` storage & opaque token generation
-  - **R7**: `CapabilityPolicy` descriptor contracts
-  - **R8**: Session log automatic secret redaction
-  - **R9**: Content-addressable SHA-256 evidence graph
-  - **R10**: Evidence graph DAG chain verification
-  - **R11**: Provenance fencing indirect injection defense (`<untrusted_observation>`)
-  - **R12**: Fenced observation parser resilience
-  - **R13**: `ClaimVerifier` supported claim confirmation
-  - **R14**: `ClaimVerifier` hallucinated claim interception
-  - **R15**: Tamper-evident engagement report generation with SHA-256 proofs
-  - **R16**: Corrupted evidence node tamper detection
-  - **R17**: Static analysis invariant: zero `shell=True` / `os.system` / `os.popen`, `subprocess` isolated strictly to broker
-  - **R18**: `CapabilityPolicy` manifest authorization gates and permanent blocking
-  - **R19**: `ResolvedTarget` socket destination validation & DNS rebinding defense
-  - **R20**: `SecretVault` per-capability scoping, rotation, revocation, and zeroization
-  - **R21**: Forensic provenance trail correlation across full contextual IDs
-  - **R22**: Cryptographic audit ledger (`core/audit.py`) HMAC hash chaining & tamper detection
-- **Track B (B0)**: Subprocess-isolated smoke testing validating all 24 tools with zero side effects.
+- **Track D (D1–D20)**: Safety, Scope, Confirmation, State & Phase Invariants
+- **Track P (P1–P9)**: ReAct, Markdown Fence, Evidence & Overclaim Interception
+- **Track M (M1–M3)**: Tool Arsenal Registry, Schema & Isolation Contracts
+- **Track C (C1–C4)**: Trajectory Quality, Duplication & Truncation Bounds
+- **Track A (A1–A3)**: Scenario Replays (Web Recon, Privesc Specialist, 5-Phase Chain)
+- **Track E (E1–E5)**: Live CLI Resilience, Unicode & Human-in-the-Loop Approval
+- **Track R (R1–R35)**: Comprehensive Red Team Adversarial & Cryptographic Suite:
+  - `R1–R5`: Shell injection, CIDR IPv6, URL spoofing & specialist broker isolation
+  - `R6–R8`: SecretVault token opaque references, zeroization & credential redaction
+  - `R9–R16`: SHA-256 DAG evidence graph & tamper detection
+  - `R17`: Subprocess isolation static invariant (`shell=True` / `os.system` eliminated)
+  - `R18`: Authoritative `CapabilityPolicy` security manifests & approval exit code `126`
+  - `R19`: `ResolvedTarget` DNS rebinding & canonical socket authorization
+  - `R20`: SecretVault capability-scoping, rotation & revocation
+  - `R21`: Platform-wide forensic provenance traversal (`get_provenance_trail`)
+  - `R22`: Cryptographic audit ledger with HMAC-SHA256 write-ahead log hash chaining
+  - `R23`: Typed security claims (`TypedClaim`) and general `ClaimVerifier`
+  - `R24`: Deterministic structured fact extraction (`StructuredFactExtractor`)
+  - `R25`: OS sandbox profiles and process tree termination (`SandboxManager`)
+  - `R26`: First-class engagement model (`Organization`, `Engagement`, `RunRecord`, `ApprovalRecord`)
+  - `R27`: DAG task graph orchestrator (`TaskGraphDAG`)
+  - `R28`: Multi-dimensional risk policy engine (`RiskPolicyEngine`)
+  - `R29`: Property-based fuzzing and zero-bypass invariants (`AdversarialFuzzer`)
+  - `R30`: Operational metrics and zero-defect invariants (`MetricsCollector`)
+  - `R31`: Automated CI/CD security gate (`CISecurityGate`)
+  - `R32`: Lab ground-truth benchmark evaluator (`BenchmarkEvaluator`)
+  - `R33`: Transactional job queue and circuit breaker (`JobQueue`)
+  - `R34`: Distributed tracing and action provenance query (`TelemetryTracer`)
+  - `R35`: Strict model boundary separation (`PlannerRole`, `SpecialistRole`, `VerifierRole`)
+- **Track B (B0)**: Per-tool subprocess smoke validation across all 24 tools
 
-Run the test suite:
 ```bash
-python eval/eval_lonly.py
+# Run complete verification harness (80/80 checks)
+LONLY_EVAL_PYTHON=~/pentest_env/bin/python ~/pentest_env/bin/python eval/eval_lonly.py
 ```
-
----
-
-## Local Models & Fine-Tuning Flywheel
-
-LONLY operates on a dual-model production stack served via Ollama:
-- `gemma3:4b` — Generalist ReAct Orchestrator.
-- `privesc-llm-rl:4b` — Privilege Escalation Specialist.
-
-### Local Fine-Tuning Pipeline (`models/sft/`)
-To fine-tune models on engagement traces:
-1. **Prepare Data**: `python models/sft/prepare_data.py` (formats transcripts to Qwen3 chat template).
-2. **Train QLoRA**: `python models/sft/train_lonly_sft.py --data ~/.cache/lonly_sft/data_full.jsonl --out ~/models/lonly-sft-run`
-3. **Merge & Quantize**: `bash models/sft/serve_sft.sh ~/models/lonly-sft-run/adapter lonly-sft:4b`
 
 ---
 
@@ -186,44 +191,14 @@ pip install -r requirements.txt
 ollama pull gemma3:4b
 ```
 
-## Evaluation & Adversarial Hardening Suite
-
-LONLY v2 enforces zero technical debt and 100% deterministic safety verified by **80 acceptance checks** across 8 tracks:
-
-- **Track D (1–20)**: Safety, Scope, Confirmation, State & Phase Invariants
-- **Track P (1–9)**: ReAct, Markdown Fence, Evidence & Overclaim Interception
-- **Track M (1–3)**: Tool Arsenal Registry, Schema & Isolation Contracts
-- **Track C (1–4)**: Trajectory Quality, Duplication & Truncation Bounds
-- **Track A (1–3)**: Scenario Replays (Web Recon, Privesc Specialist, 5-Phase Chain)
-- **Track E (1–5)**: Live CLI Resilience, Unicode & Human-in-the-Loop Approval
-- **Track R (1–35)**: Comprehensive Red Team Adversarial & Cryptographic Suite:
-  - `R1–R5`: Shell injection, CIDR IPv6, URL spoofing & specialist broker isolation
-  - `R6–R8`: SecretVault token opaque references, zeroization & credential redaction
-  - `R9–R16`: SHA-256 DAG evidence graph & tamper detection
-  - `R17`: Subprocess isolation static invariant (`shell=True` / `os.system` eliminated)
-  - `R18`: Authoritative `CapabilityPolicy` security manifests & approval exit code `126`
-  - `R19`: `ResolvedTarget` DNS rebinding & canonical socket authorization
-  - `R20`: SecretVault capability-scoping, rotation & revocation
-  - `R21`: Platform-wide forensic provenance traversal (`get_provenance_trail`)
-  - `R22`: Cryptographic audit ledger with HMAC-SHA256 write-ahead log hash chaining
-  - `R23`: Typed security claims (`TypedClaim`) and general `ClaimVerifier`
-  - `R24`: Deterministic structured fact extraction (`StructuredFactExtractor`)
-  - `R25`: OS sandbox profiles and process tree termination (`SandboxManager`)
-  - `R26`: First-class engagement model (`Organization`, `Engagement`, `RunRecord`, `ApprovalRecord`)
-  - `R27`: DAG task graph orchestrator (`TaskGraphDAG`)
-  - `R28`: Multi-dimensional risk policy engine (`RiskPolicyEngine`)
-  - `R29`: Property-based fuzzing and zero-bypass invariants (`AdversarialFuzzer`)
-  - `R30`: Operational metrics and zero-defect invariants (`MetricsCollector`)
-  - `R31`: Automated CI/CD security gate (`CISecurityGate`)
-  - `R32`: Lab ground-truth benchmark evaluator (`BenchmarkEvaluator`)
-  - `R33`: Transactional job queue and circuit breaker (`JobQueue`)
-  - `R34`: Distributed tracing and action provenance query (`TelemetryTracer`)
-  - `R35`: Strict model boundary separation (`PlannerRole`, `SpecialistRole`, `VerifierRole`)
-- **Track B (B0)**: Per-tool subprocess smoke validation across all 24 tools
-
+### 4. Run Acceptance Tests
 ```bash
-# Run complete verification harness
-LONLY_EVAL_PYTHON=~/pentest_env/bin/python ~/pentest_env/bin/python eval/eval_lonly.py
+python eval/eval_lonly.py
+```
+
+### 5. Launch LONLY Interactive Shell
+```bash
+python pentest_agent.py
 ```
 
 ---
