@@ -110,7 +110,7 @@ User Input (Natural Language)
                ▼
 ┌──────────────────────┐
 │    Ollama LLM        │
-│    (gemma4)          │
+│    (gemma3)          │
 └──────┬───────────────┘
        │  Thought → Action → Action Input
        ▼
@@ -162,7 +162,7 @@ User Input (Natural Language)
 ### System
 - Kali Linux (recommended) or any Debian-based distro with pentest tools installed
 - Python 3.10+
-- [Ollama](https://ollama.ai/) with `gemma4:e4b` model (or another capable model)
+- [Ollama](https://ollama.ai/) with `gemma3:4b` model (or another capable model)
 
 ### Python Dependencies
 ```bash
@@ -206,7 +206,7 @@ pip install -r requirements.txt
 
 3. **Pull the LLM model via Ollama**
 ```bash
-ollama pull gemma4:e4b
+ollama pull gemma3:4b
 ```
 
 4. **(Optional) Set up the RAG knowledge base**
@@ -273,9 +273,9 @@ When the risk budget is reached, LONLY pauses and shows a detailed breakdown:
 ### LLM Model
 Edit `llm = ChatOllama(...)` at line 526 of `pentest_agent.py`:
 ```python
-llm = ChatOllama(model="gemma4:e4b", temperature=0.2, num_ctx=8192)
+llm = ChatOllama(model="gemma3:4b", temperature=0.2, num_ctx=8192)
 ```
-Replace `"gemma4:e4b"` with any model available in your Ollama installation (e.g., `llama3`, `mistral`, `qwen2.5`). More capable models will produce better reasoning.
+Replace `"gemma3:4b"` with any model available in your Ollama installation (e.g., `llama3`, `mistral`, `qwen2.5`). More capable models will produce better reasoning.
 
 ### Risk-Budget Checkpoint
 The checkpoint system is tuned via named constants in `pentest_agent.py`:
@@ -294,9 +294,8 @@ lonly-pentest-agent/
 ├── pentest_agent.py      # Main agent — ReAct loop, 24 tools, risk-budget checkpoint, CLI
 ├── ingest_knowledge.py   # ChromaDB ingestion from knowledge/*.md
 ├── knowledge/            # RAG source markdown (kerberoasting, linux-privesc, etc.)
-├── chroma_db/            # ChromaDB vector store (auto-created by ingest_knowledge.py)
+├── chroma_db/            # ChromaDB vector store (gitignored; auto-created by ingest_knowledge.py)
 ├── AGENTS.md             # Agent configuration guide for opencode / AI assistants
-├── UPDATE.md             # Changelog tracking all modifications
 ├── requirements.txt      # Python dependencies
 ├── .gitignore            # Ignores __pycache__, chroma_db/, session_log.jsonl
 ├── .python-version       # Pins Python 3.10 for pyenv/uv users

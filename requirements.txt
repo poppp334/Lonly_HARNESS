@@ -5,6 +5,8 @@ langchain
 langchain-core
 langchain-community
 langchain-ollama
+langchain-huggingface
+langchain-chroma
 
 # Vector Store & Embeddings (RAG)
 chromadb

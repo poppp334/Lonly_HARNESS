@@ -1,7 +1,7 @@
 import os
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings   # <-- changed
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
 loader = DirectoryLoader("knowledge/", glob="**/*.md", loader_cls=TextLoader)

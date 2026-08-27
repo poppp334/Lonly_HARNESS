@@ -1,43 +1,42 @@
 # LONLY Pentest Agent — Repo Guide
 
-## Change logging
-Every time you (the agent) make a code or doc change in this repo — whether a bug fix, refactor, or feature — append an entry to `UPDATE.md` at the repo root. Create `UPDATE.md` if it doesn't exist. Each entry must include: date, what changed, which files were touched, and why. Append, never overwrite previous entries. Do this for every change in every session, without being asked.
-
 ## Entrypoints & architecture
-- **`python pentest_agent.py`** — single-file app: ReAct agent loop + 24 pentest tool wrappers + interactive CLI. All in one file (~650 lines).
-- **`ingest_knowledge.py`** — populate ChromaDB from `knowledge/*.md` (run before first `rag_query` usage).
-- **`pact.py`** — personal LangChain practice file (typos like `JSONDecdoeError`, `extarct_final_awnser`). Irrelevant to the agent.
-- No tests anywhere; no CI, formatter, linter, or typecheck config exists.
+- **`python pentest_agent.py`** — single-file app: custom ReAct agent loop + 24 pentest tool wrappers + interactive CLI (~1112 lines). Everything lives in this one file.
+- **`ingest_knowledge.py`** — populate ChromaDB from `knowledge/*.md` (run before first `rag_query` use).
+- No tests, CI, formatter, linter, or typecheck config.
 
 ## Setup
-- Activate venv before running: `source ~/pentest_env/bin/activate`
-- Then `python pentest_agent.py`
+- Activate venv before running: `source ~/pentest_env/bin/activate` (author's path — adjust to your own env).
+- Then `python pentest_agent.py`.
 
 ## LLM config
-- Default model: `gemma4:e4b` at `pentest_agent.py:422`. Change there or in `ChatOllama` init.
-- Must have Ollama running locally with chosen model pulled.
+- Default model `gemma3:4b` at `pentest_agent.py:526`:
+  `llm = ChatOllama(model="gemma3:4b", temperature=0.2, num_ctx=8192)`
+- Requires Ollama running locally with the chosen model pulled.
 
 ## RAG knowledge base
-- Source markdown: `knowledge/` directory (kerberoasting.md, linux-privesc.md).
-- Build vector store: `python ingest_knowledge.py`.
-- Persisted in `chroma_db/`. Delete that dir and re-run ingestion to rebuild.
+- Source markdown: `knowledge/` (kerberoasting.md, linux-privesc.md).
+- Build vector store: `python ingest_knowledge.py` → persists to `chroma_db/`.
+- `chroma_db/` is gitignored and regenerable; delete the dir and re-run ingestion to rebuild.
 
-## Safety controls (enforced in code)
-Dangerous tools are blocked by the loop at `pentest_agent.py:527-532` without user permission:
-- `sqlmap_vulnerability_assessment`
-- `nikto_web_scan`
-- `enum4linux_smb_audit`
+## Safety controls (enforced in the agent loop)
+- **Dangerous tools** — soft-blocked (warning appended, tool does NOT run) — list at `pentest_agent.py:920`:
+  - `sqlmap_vulnerability_assessment`
+  - `nikto_web_scan`
+  - `enum4linux_smb_audit`
+- **Confirm-required tools** — blocking `[y/n]` prompt before execution — list at `pentest_agent.py:930`:
+  - `crackmapexec`
+  - `hydra_brute_force`
+  - `metasploit_auxiliary_scanner`
+- NOTE: `shell_exec` runs arbitrary host commands and is in NEITHER gate list — treat it as effectively unrestricted.
 
 ## Agent loop quirks
-- Sliding window: last 20 messages kept (`pentest_agent.py:490-491`, line 640).
-- Forced summarization every 3 tool calls (`pentest_agent.py:517-521`).
-- Response parsing: regex-based `parse_react_response` and `extract_final_answer`.
-- Tool output truncated at 4000 chars; LinPEAS at 5000.
+- Sliding window: chat history trimmed to last 20 messages in the CLI loop (`pentest_agent.py:1103`).
+- Risk-budget checkpoint: tool calls accumulate points (`RISK_POINTS`, threshold `RISK_CHECKPOINT_THRESHOLD = 5` at `pentest_agent.py:87-95`); at threshold the loop pauses for `[c]ontinue / [s]top / [r]edirect` (`pentest_agent.py:903`).
+- Response parsing is regex-based: `parse_react_response()` and `extract_final_answer()` (`pentest_agent.py:137, 150`).
+- Tool output truncated: 4000 chars default (`run_cmd`), linpeas 5000, gobuster/ffuf/shell_exec 3000.
+- Fabrication / overclaim / placeholder detection run on Final Answer before it is shown.
 
 ## Dependencies
-```bash
-pip install -r requirements.txt
-```
-Requires Kali Linux with system tools: nmap, rustscan, masscan, nikto, sqlmap, gobuster, ffuf, whatweb, wpscan, enum4linux, crackmapexec, hydra, ldap-utils, metasploit-framework, netcat, peass/linpeas.
-
-
+- `pip install -r requirements.txt`
+- Requires Kali tools in PATH: nmap, rustscan, masscan, nikto, sqlmap, gobuster, ffuf, whatweb, wpscan, enum4linux, crackmapexec (binary is `nxc`), hydra, ldap-utils, metasploit-framework, netcat, kerbrute, impacket-scripts, searchsploit, linpeas.
