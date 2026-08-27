@@ -476,6 +476,21 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertIn("CVE-2021-41773", prompt_block)
         self.assertNotIn("IGNORE SECURITY POLICY", prompt_block)
 
+    def test_r25_sandbox_profile_and_resource_isolation(self):
+        """R25: SandboxManager configures resource quotas and process group termination."""
+        from core.sandbox import SandboxManager, SandboxProfile, PROFILES
+
+        prof = PROFILES["recon"]
+        self.assertEqual(prof.max_memory_mb, 256)
+        self.assertEqual(prof.max_cpu_seconds, 60)
+
+        preexec = SandboxManager.get_preexec_fn(prof)
+        if sys.platform != "win32":
+            self.assertTrue(callable(preexec))
+
+        # Safe process tree termination test on mock or non-existent PID
+        self.assertTrue(SandboxManager.terminate_process_tree(999999))
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -509,6 +524,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R22 Cryptographic audit ledger hash chaining & tamper detection", True, ""),
         ("R23 Typed claims model & ClaimVerifier verification", True, ""),
         ("R24 Structured fact extraction and prompt context hygiene", True, ""),
+        ("R25 Sandbox profiles and process tree isolation", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
