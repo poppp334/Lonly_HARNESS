@@ -538,6 +538,29 @@ class TestRedTeamHarness(unittest.TestCase):
         dag.mark_completed("t3")
         self.assertTrue(dag.is_finished())
 
+    def test_r28_multi_dimensional_risk_policy_engine(self):
+        """R28: RiskPolicyEngine enforces multi-dimensional thresholds and human-in-the-loop gates."""
+        from core.risk import RiskDecision, RiskPolicyEngine, RiskVector
+
+        engine = RiskPolicyEngine()
+
+        # 1. Low risk tool -> Auto allowed
+        d1, _ = engine.evaluate("nmap_security_scan")
+        self.assertEqual(d1, RiskDecision.AUTO_ALLOWED)
+
+        # 2. High risk credential tool without operator approval -> Approval required
+        d2, _ = engine.evaluate("hydra_brute_force", has_operator_approval=False)
+        self.assertEqual(d2, RiskDecision.OPERATOR_APPROVAL_REQUIRED)
+
+        # 3. High risk with operator approval -> Allowed
+        d3, _ = engine.evaluate("hydra_brute_force", has_operator_approval=True)
+        self.assertEqual(d3, RiskDecision.AUTO_ALLOWED)
+
+        # 4. Custom extreme risk vector
+        extreme_vec = RiskVector(destructive_potential=5, blast_radius=5)
+        d4, _ = engine.evaluate("custom_nuke", vector=extreme_vec, has_operator_approval=False)
+        self.assertEqual(d4, RiskDecision.OPERATOR_APPROVAL_REQUIRED)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -574,6 +597,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R25 Sandbox profiles and process tree isolation", True, ""),
         ("R26 First-class engagement model and hierarchy", True, ""),
         ("R27 DAG task graph orchestration and dependencies", True, ""),
+        ("R28 Multi-dimensional risk policy engine and gates", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
