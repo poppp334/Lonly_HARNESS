@@ -134,6 +134,17 @@ def extract_final_answer(text: str) -> Optional[str]:
     return None
 
 
+def clean_answer_text(text: str) -> str:
+    """Format and strip raw XML tags from 4B generation into clean markdown."""
+    if not text:
+        return ""
+    cleaned = text
+    cleaned = re.sub(r"<\/?summary>", "", cleaned)
+    cleaned = re.sub(r"<bullet>(.*?)</bullet>", r"- \1", cleaned)
+    cleaned = re.sub(r"<\/?bullet>", "", cleaned)
+    return cleaned.strip()
+
+
 def is_tool_failure(result: str) -> bool:
     """True if tool execution result indicates an unambiguous error or failure."""
     if not result or not result.strip():
