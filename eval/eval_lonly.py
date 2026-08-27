@@ -196,6 +196,16 @@ def track_a() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Track E — interactive CLI & edge cases unit tests
+# ---------------------------------------------------------------------------
+def track_e() -> None:
+    from eval.track_e_cli import run_track_e_fixtures
+    fixtures = run_track_e_fixtures()
+    for name, passed, detail in fixtures:
+        check(name, passed, detail)
+
+
+# ---------------------------------------------------------------------------
 # Track B — per-tool smoke tests (subprocess-isolated)
 # ---------------------------------------------------------------------------
 def track_b() -> None:
@@ -230,6 +240,7 @@ def main() -> int:
     track_m()
     track_c()
     track_a()
+    track_e()
     track_b()
     failed = [r for r in RESULTS if not r[1]]
     print(f"\n=== RESULT: {len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed ===")

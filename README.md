@@ -109,13 +109,14 @@ LONLY exposes **24 domain-modularized tools** organized under `tools/`:
 
 ## Evaluation & Acceptance Harness
 
-The repository includes an offline evaluation framework (`eval/eval_lonly.py`) with **40 acceptance checks**:
+The repository includes an offline evaluation framework (`eval/eval_lonly.py`) with **45 acceptance checks**:
 
 - **Track D (D1–D20)**: Guardrail policy verification, scope boundary enforcement, risk accounting, findings injection, and evidence gates.
 - **Track P (P1–P9)**: 4B-model ReAct parser resilience, markdown fence stripping, trailing comma tolerance, placeholder rejection, and overclaim validation.
 - **Track M (M1–M3)**: Modular architecture contracts, unique 24-tool registry integrity, and subprocess runner delegation.
 - **Track C (C1–C4)**: Trajectory loop quality, duplicate invocation detection, and maximum output character truncation compliance.
 - **Track A (A1–A3)**: Scenario integration suite simulating web reconnaissance, privilege escalation specialist routing, and full 5-phase lifecycle chains.
+- **Track E (E1–E5)**: CLI interactive engine and edge-case unit tests (command parsing, denial/approval gates, risk checkpoint stop/redirect, fabrication intercept, and Unicode/Thai handling).
 - **Track B (B0)**: Subprocess-isolated smoke testing validating all 24 tools with zero side effects.
 
 Run the test suite:
