@@ -589,6 +589,15 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertEqual(kpis["reliability"]["success_rate"], 100.0)
         self.assertEqual(kpis["agent_quality"]["finding_precision"], 100.0)
 
+    def test_r31_ci_security_gate_verification(self):
+        """R31: CISecurityGate verifies static invariants, secret scanning, and zero P0 security violations."""
+        from eval.ci_security_gate import CISecurityGate
+
+        gate_result = CISecurityGate.run_all_gates()
+        self.assertTrue(gate_result["passed"])
+        self.assertTrue(gate_result["static_invariants"]["passed"])
+        self.assertTrue(gate_result["secret_scanning"]["passed"])
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -628,6 +637,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R28 Multi-dimensional risk policy engine and gates", True, ""),
         ("R29 Property-based fuzzing and zero-bypass invariants", True, ""),
         ("R30 Production metrics and zero security defect invariants", True, ""),
+        ("R31 Automated CI/CD security gate and static invariant check", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
