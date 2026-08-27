@@ -509,6 +509,35 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertEqual(summary["approved_count"], 1)
         self.assertEqual(summary["engagement"]["title"], "Q3 Red Team Audit")
 
+    def test_r27_dag_task_graph_orchestration(self):
+        """R27: TaskGraphDAG manages non-linear task dependencies and cascading readiness."""
+        from core.orchestrator import TaskGraphDAG, TaskStatus
+
+        dag = TaskGraphDAG()
+        t1 = dag.add_task("t1", "Port Discovery", "recon", "10.0.0.1")
+        t2_web = dag.add_task("t2_web", "Web Scan", "enumerate", "10.0.0.1", dependencies=["t1"])
+        t2_smb = dag.add_task("t2_smb", "SMB Scan", "enumerate", "10.0.0.1", dependencies=["t1"])
+        t3 = dag.add_task("t3", "Privesc Exploit", "privesc", "10.0.0.1", dependencies=["t2_web", "t2_smb"])
+
+        # Initially only t1 is ready
+        ready_1 = dag.get_ready_tasks()
+        self.assertEqual([t.task_id for t in ready_1], ["t1"])
+
+        # Complete t1 -> t2_web and t2_smb become ready
+        dag.mark_completed("t1")
+        ready_2 = dag.get_ready_tasks()
+        self.assertEqual({t.task_id for t in ready_2}, {"t2_web", "t2_smb"})
+
+        # Complete t2_web and t2_smb -> t3 becomes ready
+        dag.mark_completed("t2_web")
+        dag.mark_completed("t2_smb")
+        ready_3 = dag.get_ready_tasks()
+        self.assertEqual([t.task_id for t in ready_3], ["t3"])
+
+        # Complete t3 -> finished
+        dag.mark_completed("t3")
+        self.assertTrue(dag.is_finished())
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -544,6 +573,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R24 Structured fact extraction and prompt context hygiene", True, ""),
         ("R25 Sandbox profiles and process tree isolation", True, ""),
         ("R26 First-class engagement model and hierarchy", True, ""),
+        ("R27 DAG task graph orchestration and dependencies", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
