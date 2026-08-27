@@ -22,10 +22,9 @@ class NmapScanInput(BaseModel):
 
 
 class RustScanInput(BaseModel):
-    target: str = Field(..., description="The target to scan. IP addresses are highly recommended.")
-    ports: str = Field(default="1-65535", description="Port range to scan. Default is '1-65535'.")
-    ulimit: int = Field(default=5000, description="The resource limit for system socket execution.")
-    batch_size: int = Field(default=1000, description="The batch size for parallel socket connections.")
+    target: str = Field(..., description="The target IP address or hostname to scan.")
+    ports: Optional[str] = Field(default="1-65535", description="Port range (e.g., '1-65535', '80,443', '1-1000'). Default is '1-65535'.")
+    scan_version: bool = Field(default=False, description="Set True to run deep Nmap version detection on discovered ports. Default is False for ultra-fast port discovery.")
 
 
 class MasscanInput(BaseModel):
@@ -71,10 +70,24 @@ def nmap_security_scan(target: str, ports: Optional[str] = None, scan_type: str 
 
 
 @tool(args_schema=RustScanInput)
-def rustscan_port_scan(target: str, ports: str = "1-65535", ulimit: int = 5000, batch_size: int = 1000) -> str:
-    """Ultra-fast port scanner (RustScan). Best for initial reconnaissance of all 65535 ports."""
-    cmd = f"rustscan -a {target} -r {ports} --ulimit {ulimit} -b {batch_size} -- -sV"
-    return run_cmd(cmd, timeout=120)
+def rustscan_port_scan(
+    target: str,
+    ports: Optional[str] = "1-65535",
+    scan_version: bool = False,
+    ulimit: Optional[int] = None,
+    batch_size: Optional[int] = None,
+) -> str:
+    """Ultra-fast port scanner (RustScan). Best for discovering all open ports (1-65535) in seconds."""
+    port_range = ports if ports else "1-65535"
+    opts = []
+    if ulimit:
+        opts.append(f"--ulimit {ulimit}")
+    if batch_size:
+        opts.append(f"-b {batch_size}")
+    opt_str = f" {' '.join(opts)}" if opts else ""
+    nmap_flags = "-T4 -sV" if scan_version else "-T4"
+    cmd = f"rustscan -a {target} -r {port_range}{opt_str} -- {nmap_flags}"
+    return run_cmd(cmd, timeout=60)
 
 
 @tool(args_schema=MasscanInput)
