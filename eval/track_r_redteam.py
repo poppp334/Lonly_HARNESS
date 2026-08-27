@@ -623,6 +623,37 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertTrue(res_hallucinated["metrics"]["hallucination_rate"] > 0)
         self.assertEqual(res_hallucinated["breakdown"]["false_positives"], 1)
 
+    def test_r33_job_queue_and_circuit_breaker_resilience(self):
+        """R33: JobQueue enforces retry limits and trips CircuitBreaker on repeated errors."""
+        from core.queue import CircuitBreaker, CircuitState, JobQueue, JobState
+
+        cb = CircuitBreaker(failure_threshold=2, reset_timeout_seconds=5.0)
+        jq = JobQueue(circuit_breaker=cb)
+
+        # 1. Enqueue and Dequeue
+        j1 = jq.enqueue("task_1", "nmap", {"target": "10.0.0.1"}, max_retries=2)
+        deq_1 = jq.dequeue()
+        self.assertIsNotNone(deq_1)
+        self.assertEqual(deq_1.job_id, j1.job_id)
+
+        # 2. First failure -> retried
+        jq.fail_job(j1.job_id, "Network timeout")
+        self.assertEqual(j1.attempts, 1)
+
+        deq_retry = jq.dequeue()
+        self.assertIsNotNone(deq_retry)
+        self.assertEqual(deq_retry.attempts, 2)
+
+        # 3. Second failure -> max retries reached, job marked FAILED, circuit trips OPEN
+        jq.fail_job(j1.job_id, "Network timeout again")
+        self.assertEqual(j1.state, JobState.FAILED)
+        self.assertEqual(cb.state, CircuitState.OPEN)
+
+        # 4. Dequeue blocked while circuit OPEN
+        jq.enqueue("task_2", "nmap", {"target": "10.0.0.1"})
+        blocked_deq = jq.dequeue()
+        self.assertIsNone(blocked_deq)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -664,6 +695,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R30 Production metrics and zero security defect invariants", True, ""),
         ("R31 Automated CI/CD security gate and static invariant check", True, ""),
         ("R32 Benchmark ground truth and hallucination metrics", True, ""),
+        ("R33 Transactional job queue and circuit breaker", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
