@@ -417,6 +417,40 @@ class TestRedTeamHarness(unittest.TestCase):
             self.assertFalse(valid)
             self.assertIn("Payload altered", msg)
 
+    def test_r23_typed_claims_model_and_claim_verifier(self):
+        """R23: ClaimVerifier validates structured TypedClaims and catches false assertions."""
+        from core.evidence import ClaimType, ClaimVerifier, EvidenceGraph, TypedClaim
+
+        graph = EvidenceGraph()
+        cmd = graph.add_command_artifact("nmap", ["-sV", "10.0.0.5"], target="10.0.0.5")
+        graph.add_output_artifact(
+            "PORT 80/tcp open http Apache httpd 2.4.41\nPORT 445/tcp open microsoft-ds\nCVE-2021-41773 Path Traversal detected",
+            "nmap",
+            "10.0.0.5",
+            command_hash=cmd.sha256,
+        )
+
+        verifier = ClaimVerifier(graph)
+
+        # 1. Valid claims
+        c_port = TypedClaim(claim_type=ClaimType.OPEN_PORT, target="10.0.0.5", port=80)
+        self.assertTrue(verifier.verify_claim(c_port))
+
+        c_svc = TypedClaim(claim_type=ClaimType.SERVICE_VERSION, target="10.0.0.5", service="Apache", version="2.4.41")
+        self.assertTrue(verifier.verify_claim(c_svc))
+
+        c_vuln = TypedClaim(claim_type=ClaimType.VULNERABILITY, target="10.0.0.5", vulnerability_id="CVE-2021-41773")
+        self.assertTrue(verifier.verify_claim(c_vuln))
+
+        # 2. Unsupported / False claims
+        c_bad_port = TypedClaim(claim_type=ClaimType.OPEN_PORT, target="10.0.0.5", port=22)
+        self.assertFalse(verifier.verify_claim(c_bad_port))
+        self.assertIn("not confirmed open", c_bad_port.rejection_reason)
+
+        c_fake_vuln = TypedClaim(claim_type=ClaimType.VULNERABILITY, target="10.0.0.5", vulnerability_id="CVE-2099-99999")
+        self.assertFalse(verifier.verify_claim(c_fake_vuln))
+        self.assertIn("not supported", c_fake_vuln.rejection_reason)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -448,6 +482,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R20 SecretVault capability scoping rotation & revocation", True, ""),
         ("R21 Forensic provenance trail and context IDs", True, ""),
         ("R22 Cryptographic audit ledger hash chaining & tamper detection", True, ""),
+        ("R23 Typed claims model & ClaimVerifier verification", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

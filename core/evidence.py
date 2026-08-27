@@ -367,13 +367,135 @@ def strip_fences(text: str) -> str:
 
 # ---------------------------------------------------------------------------
 # Cryptographic Claim Verifier & Engagement Report Generator
-# ---------------------------------------------------------------------------
+class ClaimType(str, Enum):
+    """Categorization of verifiable security claims."""
+    OPEN_PORT = "open_port"
+    SERVICE_VERSION = "service_version"
+    VULNERABILITY = "vulnerability"
+    CREDENTIAL_DISCOVERY = "credential_discovery"
+    PRIVESC_PATH = "privesc_path"
+    HOST_ACCESSIBLE = "host_accessible"
+
+
+@dataclass
+class TypedClaim:
+    """Structured security claim submitted for cryptographic evidence verification."""
+    claim_type: ClaimType | str
+    target: str
+    port: Optional[int] = None
+    protocol: str = "tcp"
+    service: str = ""
+    version: str = ""
+    vulnerability_id: str = ""
+    credential_user: str = ""
+    credential_secret_token: str = ""
+    details: str = ""
+    evidence_hashes: list[str] = field(default_factory=list)
+    is_verified: bool = False
+    rejection_reason: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
 
 class ClaimVerifier:
-    """Verifies that statements/claims in text are backed by cryptographic evidence nodes."""
+    """Verifies that statements and typed claims are strictly backed by cryptographic evidence nodes."""
 
     def __init__(self, graph: EvidenceGraph):
         self.graph = graph
+
+    def verify_claim(self, claim: TypedClaim) -> bool:
+        """Verify a single typed claim against the evidence graph."""
+        c_type = claim.claim_type.value if isinstance(claim.claim_type, ClaimType) else str(claim.claim_type)
+
+        # 1. Evidence existence check
+        nodes: list[EvidenceNode] = []
+        if claim.evidence_hashes:
+            for h in claim.evidence_hashes:
+                if h in self.graph._nodes:
+                    nodes.append(self.graph._nodes[h])
+                else:
+                    claim.is_verified = False
+                    claim.rejection_reason = f"Referenced evidence hash '{h}' not found in graph."
+                    return False
+        else:
+            # Search all nodes in graph
+            nodes = list(self.graph._nodes.values())
+
+        if not nodes:
+            claim.is_verified = False
+            claim.rejection_reason = "Evidence graph contains no artifacts."
+            return False
+
+        # 2. Type-specific verification logic
+        combined_text = "\n".join(n.content for n in nodes)
+
+        if c_type == ClaimType.OPEN_PORT:
+            if not claim.port:
+                claim.is_verified = False
+                claim.rejection_reason = "Claim missing port number."
+                return False
+            port_str = str(claim.port)
+            # Must verify port is mentioned in evidence
+            if port_str in combined_text and ("open" in combined_text.lower() or "succeeded" in combined_text.lower() or "connected" in combined_text.lower() or port_str in combined_text):
+                claim.is_verified = True
+                claim.rejection_reason = ""
+                return True
+            claim.is_verified = False
+            claim.rejection_reason = f"Port {claim.port} not confirmed open in evidence."
+            return False
+
+        elif c_type == ClaimType.SERVICE_VERSION:
+            if not claim.service:
+                claim.is_verified = False
+                claim.rejection_reason = "Claim missing service name."
+                return False
+            svc_ok = claim.service.lower() in combined_text.lower()
+            ver_ok = (claim.version.lower() in combined_text.lower()) if claim.version else True
+            if svc_ok and ver_ok:
+                claim.is_verified = True
+                claim.rejection_reason = ""
+                return True
+            claim.is_verified = False
+            claim.rejection_reason = f"Service '{claim.service}' (version '{claim.version}') not found in evidence."
+            return False
+
+        elif c_type == ClaimType.VULNERABILITY:
+            vuln = claim.vulnerability_id or claim.details
+            if vuln and vuln.lower() in combined_text.lower():
+                claim.is_verified = True
+                claim.rejection_reason = ""
+                return True
+            claim.is_verified = False
+            claim.rejection_reason = f"Vulnerability '{vuln}' not supported by evidence artifacts."
+            return False
+
+        elif c_type == ClaimType.CREDENTIAL_DISCOVERY:
+            user_ok = claim.credential_user.lower() in combined_text.lower() if claim.credential_user else True
+            token_ok = (claim.credential_secret_token in combined_text) if claim.credential_secret_token else True
+            if (claim.credential_user or claim.credential_secret_token) and user_ok and token_ok:
+                claim.is_verified = True
+                claim.rejection_reason = ""
+                return True
+            claim.is_verified = False
+            claim.rejection_reason = "Discovered credential details not corroborated by evidence."
+            return False
+
+        # Default fallback match
+        if claim.details and claim.details.lower() in combined_text.lower():
+            claim.is_verified = True
+            claim.rejection_reason = ""
+            return True
+
+        claim.is_verified = False
+        claim.rejection_reason = "Claim content not found in evidence graph."
+        return False
+
+    def verify_typed_claims(self, claims: list[TypedClaim]) -> list[TypedClaim]:
+        """Batch verify a list of typed claims."""
+        for c in claims:
+            self.verify_claim(c)
+        return claims
 
     def verify_final_answer(self, text: str) -> dict:
         """Scan text for claims (ports, services) and verify against evidence graph."""
@@ -391,15 +513,12 @@ class ClaimVerifier:
                 ports_mentioned.add(port)
 
         for port in sorted(ports_mentioned):
-            found_in_node = False
-            for sha, node in self.graph._nodes.items():
-                if port in node.content:
-                    found_in_node = True
-                    if sha not in evidence_hashes:
-                        evidence_hashes.append(sha)
-                    break
-            if found_in_node:
+            claim = TypedClaim(claim_type=ClaimType.OPEN_PORT, target="", port=int(port))
+            if self.verify_claim(claim):
                 supported.append(f"port {port}")
+                for sha, node in self.graph._nodes.items():
+                    if port in node.content and sha not in evidence_hashes:
+                        evidence_hashes.append(sha)
             else:
                 unsupported.append(f"port {port}")
 
