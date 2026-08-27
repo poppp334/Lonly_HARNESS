@@ -87,7 +87,7 @@ Every `run()` appends a JSONL trajectory (state/action/observation + verifiable
 `success`) to `trajectory_path`. Trajectories from real LONLY engagements feed
 the SFT dataset; Docker scenario boxes supply machine-checkable rewards. Periodic
 local re-training (Unsloth QLoRA, rank 8) compounds the model on our own
-experience — see docs/privesc-model-plan.md.
+experience — see docs/architecture-upgrade-map.md.
 
 ## Flywheel (Phase 3a) — train your own specialist, all local
 
