@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""eval/track_r_redteam.py — Adversarial Red Team Security Test Suite (Track R).
+
+Asserts production security properties of LONLY v2:
+- R1: Shell metacharacter injection resilience (shell=False).
+- R2: TargetPolicy IPv6, bracketed IPv6, and CIDR scope enforcement.
+- R3: URL parser confusion & credential userinfo injection resistance.
+- R4: Execution broker below-agent scope authorization boundary.
+- R5: Specialist SSH backend broker isolation and scope enforcement.
+"""
+from __future__ import annotations
+
+import os
+import sys
+import unittest
+from unittest.mock import patch, MagicMock
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+from core.broker import ExecutionBroker, ExecutionResult
+from core.policy import TargetPolicy
+from tools.base import run_argv, run_cmd
+
+
+class TestRedTeamHarness(unittest.TestCase):
+
+    def test_r1_shell_metacharacter_injection_resilience(self):
+        """R1: Passing shell metacharacters (; && || ` $()) does NOT trigger secondary command execution."""
+        broker = ExecutionBroker()
+        # Attempt command injection via argv argument
+        # With shell=False, echo will literally print the string '; echo INJECTED', not run a second command
+        res = broker.execute(
+            executable="echo",
+            argv=["safe_text; touch /tmp/lonly_pwned_marker"],
+            timeout=10,
+        )
+        self.assertTrue(res.is_success)
+        self.assertIn("safe_text; touch /tmp/lonly_pwned_marker", res.stdout)
+        import os
+        self.assertFalse(os.path.exists("/tmp/lonly_pwned_marker"))
+
+    def test_r2_target_policy_ipv6_and_cidr(self):
+        """R2: Scope policy handles IPv6, bracketed IPv6, and CIDR networks deterministically."""
+        policy = TargetPolicy(allowed_targets=["192.168.1.0/24", "2001:db8::/32", "corp.local"])
+        
+        # In-scope
+        self.assertTrue(policy.is_in_scope("192.168.1.50"))
+        self.assertTrue(policy.is_in_scope("192.168.1.100:8080"))
+        self.assertTrue(policy.is_in_scope("2001:db8::1"))
+        self.assertTrue(policy.is_in_scope("[2001:db8::1]:443"))
+        self.assertTrue(policy.is_in_scope("dc1.corp.local"))
+        self.assertTrue(policy.is_in_scope("http://corp.local/api"))
+
+        # Out-of-scope
+        self.assertFalse(policy.is_in_scope("192.168.2.1"))
+        self.assertFalse(policy.is_in_scope("2001:dead::1"))
+        self.assertFalse(policy.is_in_scope("evil.com"))
+        self.assertFalse(policy.is_in_scope("8.8.8.8"))
+
+    def test_r3_url_parser_confusion(self):
+        """R3: Scope policy resists URL parser confusion and userinfo spoofing."""
+        policy = TargetPolicy(allowed_targets=["127.0.0.1"])
+
+        # Legitimate URL
+        self.assertTrue(policy.is_in_scope("http://127.0.0.1:8080/admin"))
+
+        # Userinfo spoofing: http://127.0.0.1@evil.com/ -> actual host is evil.com
+        self.assertFalse(policy.is_in_scope("http://127.0.0.1@evil.com/"))
+        self.assertFalse(policy.is_in_scope("http://127.0.0.1:password@attacker.org:8080/"))
+
+        # Fragment / query spoofing
+        self.assertFalse(policy.is_in_scope("http://evil.com#127.0.0.1"))
+        self.assertFalse(policy.is_in_scope("http://evil.com?target=127.0.0.1"))
+
+    def test_r4_execution_broker_below_agent_boundary(self):
+        """R4: Execution broker refuses out-of-scope targets before process execution."""
+        policy = TargetPolicy(allowed_targets=["127.0.0.1"])
+        broker = ExecutionBroker(policy=policy)
+
+        res = broker.execute(
+            executable="nmap",
+            argv=["-sV", "10.0.0.1"],
+            target="10.0.0.1",
+        )
+        self.assertEqual(res.exit_code, 126)
+        self.assertIn("[SCOPE BLOCKED]", res.stderr)
+        self.assertIn("[SCOPE BLOCKED]", res.output)
+
+    def test_r5_specialist_broker_isolation(self):
+        """R5: Specialist tool backend enforces scope check via broker."""
+        policy = TargetPolicy(allowed_targets=["127.0.0.1"])
+        broker = ExecutionBroker(policy=policy)
+
+        # Attempt to run SSH command against out-of-scope host
+        out = run_argv(
+            "ssh",
+            ["-o", "BatchMode=yes", "attacker.com", "whoami"],
+            target="attacker.com",
+            broker=broker,
+        )
+        self.assertIn("[SCOPE BLOCKED]", out)
+
+
+def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
+    """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
+    import io
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestRedTeamHarness)
+    runner = unittest.TextTestRunner(stream=io.StringIO(), verbosity=0)
+    result = runner.run(suite)
+
+    fixtures = [
+        ("R1 Shell metacharacter injection resilience", True, ""),
+        ("R2 TargetPolicy IPv6 & CIDR scope enforcement", True, ""),
+        ("R3 URL parser confusion & userinfo spoof resistance", True, ""),
+        ("R4 Execution broker below-agent authorization boundary", True, ""),
+        ("R5 Specialist broker isolation & scope refusal", True, ""),
+    ]
+    if not result.wasSuccessful():
+        for i, failure in enumerate(result.failures + result.errors):
+            idx = min(i, len(fixtures) - 1)
+            fixtures[idx] = (fixtures[idx][0], False, str(failure[1]))
+    return fixtures
+
+
+if __name__ == "__main__":
+    unittest.main()

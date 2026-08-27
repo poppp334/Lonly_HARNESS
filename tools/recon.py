@@ -10,7 +10,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 
-from tools.base import run_cmd, clean_target, ensure_url
+from tools.base import run_argv, clean_target, ensure_url
 
 
 class NmapScanInput(BaseModel):
@@ -58,36 +58,35 @@ class KerbruteInput(BaseModel):
 def nmap_security_scan(target: str, ports: Optional[str] = None, scan_type: str = "Version", timing: str = "T4", use_default_scripts: bool = False) -> str:
     """Use this tool to perform network exploration and vulnerability/port scanning using Nmap."""
     host = clean_target(target)
-    args = [f"-{timing}"]
+    argv = [f"-{timing}"]
     scan_type_map = {"SYN": "-sS", "Connect": "-sT", "Version": "-sV", "OS": "-O", "Aggressive": "-A"}
-    args.append(scan_type_map.get(scan_type, "-sV"))
+    argv.append(scan_type_map.get(scan_type, "-sV"))
     if use_default_scripts and scan_type != "Aggressive":
-        args.append("-sC")
+        argv.append("-sC")
     if ports:
         clean_p = ports.strip()
         if clean_p.lower() in ("all", "1-65535", "full", "*"):
-            args.append("-p-")
+            argv.append("-p-")
         else:
-            args.append(f"-p {clean_p}")
-    args.append(host)
-    cmd = f"nmap {' '.join(args)}"
-    return run_cmd(cmd, timeout=180)
+            argv.extend(["-p", clean_p])
+    argv.append(host)
+    return run_argv("nmap", argv, target=host, timeout=180)
 
 
-def _format_rustscan_ports(ports: Optional[str]) -> str:
-    """Intelligently maps LLM port inputs to the correct RustScan CLI flags (-r, -p, --top, or default)."""
+def _format_rustscan_ports(ports: Optional[str]) -> list[str]:
+    """Intelligently maps LLM port inputs to the correct RustScan CLI argv arguments."""
     if not ports:
-        return ""
+        return []
     p = ports.strip().lower()
     if p in ("all", "1-65535", "full", "65535", "none", "*"):
-        return ""  # RustScan default is full 1-65535 scan
+        return []  # RustScan default is full 1-65535 scan
     if p in ("top", "top1000", "top-1000", "top 1000"):
-        return "--top"
+        return ["--top"]
     if "-" in p and "," not in p:
-        return f"-r {p}"
+        return ["-r", p]
     # Single port or comma-separated list (e.g., '80,443' or '80')
     clean = ",".join(part.strip() for part in p.split(",") if part.strip())
-    return f"-p {clean}" if clean else ""
+    return ["-p", clean] if clean else []
 
 
 @tool(args_schema=RustScanInput)
@@ -100,18 +99,18 @@ def rustscan_port_scan(
 ) -> str:
     """Ultra-fast port scanner (RustScan). Discovers open ports across 1-65535 in seconds."""
     host = clean_target(target)
-    port_flag = _format_rustscan_ports(ports)
-    opts = []
-    if port_flag:
-        opts.append(port_flag)
+    argv = ["-a", host]
+    argv.extend(_format_rustscan_ports(ports))
     if ulimit:
-        opts.append(f"--ulimit {ulimit}")
+        argv.extend(["--ulimit", str(ulimit)])
     if batch_size:
-        opts.append(f"-b {batch_size}")
-    opt_str = f" {' '.join(opts)}" if opts else ""
-    nmap_flags = "-T4 -sV" if scan_version else "-T4"
-    cmd = f"rustscan -a {host}{opt_str} -- {nmap_flags}"
-    return run_cmd(cmd, timeout=60)
+        argv.extend(["-b", str(batch_size)])
+    argv.append("--")
+    if scan_version:
+        argv.extend(["-T4", "-sV"])
+    else:
+        argv.append("-T4")
+    return run_argv("rustscan", argv, target=host, timeout=60)
 
 
 @tool(args_schema=MasscanInput)
@@ -121,32 +120,32 @@ def masscan_port_scan(target: str, ports: Optional[str] = "1-65535", rate: int =
     p_val = ports if ports else "1-65535"
     if p_val.lower() in ("all", "full", "*"):
         p_val = "1-65535"
-    cmd = f"masscan {host} -p{p_val} --rate={rate} --wait=0"
-    return run_cmd(cmd, timeout=120)
+    argv = [host, f"-p{p_val}", f"--rate={rate}", "--wait=0"]
+    return run_argv("masscan", argv, target=host, timeout=120)
 
 
 @tool(args_schema=WhatWebInput)
 def whatweb_web_fingerprint(target_url: str) -> str:
     """Identify and fingerprint web technologies using WhatWeb."""
     url = ensure_url(target_url)
-    cmd = f"whatweb {url} --no-errors"
-    return run_cmd(cmd, timeout=60)
+    argv = [url, "--no-errors"]
+    return run_argv("whatweb", argv, target=url, timeout=60)
 
 
 @tool(args_schema=Enum4linuxInput)
 def enum4linux_smb_audit(target_ip: str) -> str:
     """Enumerate information from Windows and Samba systems via SMB protocols using enum4linux."""
     host = clean_target(target_ip)
-    cmd = f"enum4linux -a {host}"
-    return run_cmd(cmd, timeout=150)
+    argv = ["-a", host]
+    return run_argv("enum4linux", argv, target=host, timeout=150)
 
 
 @tool(args_schema=LdapSearchInput)
 def ldap_search_enumeration(target_ip: str, base_dn: str, search_filter: str = "(objectClass=*)") -> str:
     """Perform anonymous or simple bind LDAP queries against an Active Directory server."""
     host = clean_target(target_ip)
-    cmd = f"ldapsearch -x -h {host} -b \"{base_dn}\" \"{search_filter}\""
-    return run_cmd(cmd, timeout=90)
+    argv = ["-x", "-h", host, "-b", base_dn, search_filter]
+    return run_argv("ldapsearch", argv, target=host, timeout=90)
 
 
 @tool(args_schema=KerbruteInput)
@@ -154,5 +153,5 @@ def kerbrute_active_directory_assessment(domain: str, dc_ip: str, mode: str = "u
     """Use Kerbrute to enumerate valid Active Directory usernames or perform password spraying."""
     host = clean_target(dc_ip)
     validated_mode = "userenum" if mode not in ["userenum", "passwordspray"] else mode
-    cmd = f"kerbrute {validated_mode} --dc {host} -d {domain} {wordlist}"
-    return run_cmd(cmd, timeout=120)
+    argv = [validated_mode, "--dc", host, "-d", domain, wordlist]
+    return run_argv("kerbrute", argv, target=host, timeout=120)

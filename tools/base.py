@@ -9,14 +9,18 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
+import shlex
 import sys
+from typing import Optional
+
+from core.broker import DEFAULT_BROKER, ExecutionBroker, ExecutionResult
 
 # Patterns that unambiguously indicate a tool call failed.
 TOOL_FAILURE_PATTERNS = [
     "[ERROR]",
     "[TIMEOUT]",
     "[TOOL ERROR]",
+    "[SCOPE BLOCKED]",
     "not found",
     "command not found",
     "No such file or directory",
@@ -57,28 +61,52 @@ def find_wordlist(preferred: str, fallbacks: list[str] | None = None) -> str:
     return preferred
 
 
-def _exec_cmd(cmd: str, timeout: int = 120, max_output: int = 4000) -> str:
-    """Underlying subprocess execution with length truncation."""
-    try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
-        output = result.stdout + result.stderr
-        if len(output) > max_output:
-            output = output[:max_output] + "\n... [OUTPUT TRUNCATED]"
-        return output.strip() or "[Command executed successfully with no output]"
-    except subprocess.TimeoutExpired:
-        return f"[TIMEOUT] Command exceeded {timeout}s limit: {cmd}"
-    except Exception as e:
-        return f"[ERROR] {str(e)}"
+def run_argv(
+    executable: str,
+    argv: list[str],
+    target: Optional[str] = None,
+    timeout: int = 120,
+    max_output: int = 4000,
+    broker: Optional[ExecutionBroker] = None,
+) -> str:
+    """Execute a tool via structured argv vector without shell (shell=False).
 
-
-def run_cmd(cmd: str, timeout: int = 120, max_output: int = 4000) -> str:
-    """Execute a shell command with timeout and length truncation.
-
-    Delegates to pentest_agent.run_cmd if monkeypatched by test harnesses.
+    Delegates to pentest_agent.run_cmd/run_argv if monkeypatched by test harnesses.
     """
     pa = sys.modules.get("pentest_agent")
     if pa is not None and hasattr(pa, "run_cmd"):
         pa_fn = getattr(pa, "run_cmd")
-        if pa_fn is not run_cmd and callable(pa_fn):
+        if callable(pa_fn) and pa_fn is not run_cmd:
+            # If monkeypatched with single string signature
+            cmd_str = f"{executable} {' '.join(str(a) for a in argv)}"
+            return pa_fn(cmd_str, timeout=timeout, max_output=max_output)
+
+    b = broker or DEFAULT_BROKER
+    res = b.execute(
+        executable=executable,
+        argv=argv,
+        target=target,
+        timeout=timeout,
+        max_output=max_output,
+    )
+    return res.output
+
+
+def run_cmd(cmd: str, timeout: int = 120, max_output: int = 4000) -> str:
+    """Tokenize command string safely with shlex and execute via ExecutionBroker (shell=False)."""
+    pa = sys.modules.get("pentest_agent")
+    if pa is not None and hasattr(pa, "run_cmd"):
+        pa_fn = getattr(pa, "run_cmd")
+        if callable(pa_fn) and pa_fn is not run_cmd:
             return pa_fn(cmd, timeout=timeout, max_output=max_output)
-    return _exec_cmd(cmd, timeout=timeout, max_output=max_output)
+
+    parts = shlex.split(cmd)
+    if not parts:
+        return "[ERROR] Empty command"
+    executable = parts[0]
+    argv = parts[1:]
+    return run_argv(executable, argv, timeout=timeout, max_output=max_output)
+
+
+# Backward compatibility alias
+_exec_cmd = run_cmd

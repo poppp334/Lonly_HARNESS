@@ -10,7 +10,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 
-from tools.base import run_cmd, clean_target, ensure_url, find_wordlist
+from tools.base import run_argv, clean_target, ensure_url, find_wordlist
 
 
 class GobusterDirInput(BaseModel):
@@ -56,8 +56,8 @@ def gobuster_directory_scan(target_url: str, wordlist: Optional[str] = None) -> 
         wordlist or "/usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt",
         ["/usr/share/wordlists/dirb/common.txt", "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"],
     )
-    cmd = f"gobuster dir -u {url} -w {wl} -q -t 30 -x php,html,txt,bak,zip"
-    return run_cmd(cmd, timeout=120, max_output=3000)
+    argv = ["dir", "-u", url, "-w", wl, "-q", "-t", "30", "-x", "php,html,txt,bak,zip"]
+    return run_argv("gobuster", argv, target=url, timeout=120, max_output=3000)
 
 
 @tool(args_schema=FfufFuzzInput)
@@ -70,53 +70,51 @@ def ffuf_web_fuzz(target_url: str, wordlist: Optional[str] = None) -> str:
         wordlist or "/usr/share/wordlists/dirb/common.txt",
         ["/usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt"],
     )
-    cmd = f"ffuf -u {url} -w {wl} -maxtime 120 -c -t 30"
-    return run_cmd(cmd, timeout=130, max_output=3000)
+    argv = ["-u", url, "-w", wl, "-maxtime", "120", "-c", "-t", "30"]
+    return run_argv("ffuf", argv, target=url, timeout=130, max_output=3000)
 
 
 @tool(args_schema=NiktoScanInput)
 def nikto_web_scan(target_host: str, port: Optional[str] = None, use_ssl: bool = False, tuning: Optional[str] = None) -> str:
     """Use this tool to perform a comprehensive web server vulnerability scan using Nikto."""
     host = clean_target(target_host)
-    args = ["nikto", "-h", host]
+    argv = ["-h", host]
     if port:
-        args.extend(["-p", str(port)])
+        argv.extend(["-p", str(port)])
     if use_ssl:
-        args.append("-ssl")
+        argv.append("-ssl")
     if tuning:
-        args.extend(["-Tuning", str(tuning)])
-    cmd = " ".join(args)
-    return run_cmd(cmd, timeout=180)
+        argv.extend(["-Tuning", str(tuning)])
+    return run_argv("nikto", argv, target=host, timeout=180)
 
 
 @tool(args_schema=SqlmapInput)
 def sqlmap_vulnerability_assessment(target_url: str, level: int = 1, risk: int = 1) -> str:
     """Detect and exploit SQL injection vulnerabilities using SQLMap. Runs in non-interactive batch mode."""
     url = ensure_url(target_url)
-    cmd = f"sqlmap -u \"{url}\" --level={level} --risk={risk} --batch --disable-coloring"
-    return run_cmd(cmd, timeout=300)
+    argv = ["-u", url, f"--level={level}", f"--risk={risk}", "--batch", "--disable-coloring"]
+    return run_argv("sqlmap", argv, target=url, timeout=300)
 
 
 @tool(args_schema=WpScanInput)
 def wpscan_wordpress_audit(target_url: str, enumerate_options: str = "vp,vt,u") -> str:
     """Scan a WordPress website for vulnerable plugins, themes, and usernames using WPScan."""
     url = ensure_url(target_url)
-    cmd = f"wpscan --url {url} -e {enumerate_options} --no-update --random-user-agent --format cli"
-    return run_cmd(cmd, timeout=180)
+    argv = ["--url", url, "-e", enumerate_options, "--no-update", "--random-user-agent", "--format", "cli"]
+    return run_argv("wpscan", argv, target=url, timeout=180)
 
 
 @tool(args_schema=CurlRequestInput)
 def curl_web_request(url: str, method: str = "GET", data: str = "", headers: str = "") -> str:
     """Execute custom HTTP requests using cURL."""
     target = ensure_url(url)
-    args = ["curl", "-X", method.upper(), "-s"]
+    argv = ["-X", method.upper(), "-s"]
     if headers:
         clean_hdr = headers.strip()
-        if not clean_hdr.startswith("-H"):
-            clean_hdr = f"-H '{clean_hdr}'"
-        args.append(clean_hdr)
+        if clean_hdr.startswith("-H "):
+            clean_hdr = clean_hdr[3:].strip().strip("'\"")
+        argv.extend(["-H", clean_hdr])
     if data:
-        args.extend(["-d", f"'{data}'"])
-    args.append(f'"{target}"')
-    cmd = " ".join(args)
-    return run_cmd(cmd, timeout=60)
+        argv.extend(["-d", data])
+    argv.append(target)
+    return run_argv("curl", argv, target=target, timeout=60)

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import ipaddress
 
+from core.policy import TargetPolicy
+
 # ---------------------------------------------------------------------------
 # Scope control (deny-by-default; PhantomRed consent-first + CSA guidance).
 # Entries: exact IP, CIDR, hostname, or domain suffix (".lab").
@@ -24,23 +26,9 @@ TARGET_ARG_KEYS = (
 
 
 def target_in_scope(target: str) -> bool:
-    """True if the target string is within ALLOWED_TARGETS."""
-    target = target.strip().lower().rstrip(".").split(":")[0]  # strip port suffix
-    if not ALLOWED_TARGETS:
-        return target in ("127.0.0.1", "::1", "localhost")
-    for entry in ALLOWED_TARGETS:
-        entry = entry.strip().lower().rstrip(".")
-        if entry == target:
-            return True
-        if "/" in entry:  # CIDR
-            try:
-                if ipaddress.ip_address(target) in ipaddress.ip_network(entry, strict=False):
-                    return True
-            except ValueError:
-                continue
-        if entry.startswith(".") and target.endswith(entry):
-            return True
-    return False
+    """True if the target string is within ALLOWED_TARGETS using RFC-compliant TargetPolicy."""
+    policy = TargetPolicy(allowed_targets=ALLOWED_TARGETS)
+    return policy.is_in_scope(target)
 
 
 def extract_targets_from_args(tool_args: dict) -> list[str]:

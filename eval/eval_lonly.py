@@ -206,6 +206,16 @@ def track_e() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Track R — adversarial red team & security boundary suite
+# ---------------------------------------------------------------------------
+def track_r() -> None:
+    from eval.track_r_redteam import run_track_r_fixtures
+    fixtures = run_track_r_fixtures()
+    for name, passed, detail in fixtures:
+        check(name, passed, detail)
+
+
+# ---------------------------------------------------------------------------
 # Track B — per-tool smoke tests (subprocess-isolated)
 # ---------------------------------------------------------------------------
 def track_b() -> None:
@@ -241,6 +251,7 @@ def main() -> int:
     track_c()
     track_a()
     track_e()
+    track_r()
     track_b()
     failed = [r for r in RESULTS if not r[1]]
     print(f"\n=== RESULT: {len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed ===")

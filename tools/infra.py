@@ -15,8 +15,9 @@ import networkx as nx
 import requests
 
 import os
+import shlex
 import shutil
-from tools.base import run_cmd, clean_target, find_wordlist
+from tools.base import run_argv, run_cmd, clean_target, find_wordlist
 
 try:
     from langchain_huggingface import HuggingFaceEmbeddings
@@ -91,9 +92,8 @@ def rag_query(query: str) -> str:
 @tool(args_schema=SearchsploitInput)
 def searchsploit_exploit_lookup(query: str) -> str:
     """Search the local Exploit-DB archive using Searchsploit to find known public exploits."""
-    clean_q = query.strip().replace(";", "").replace("&", "")
-    cmd = f"searchsploit {clean_q}"
-    return run_cmd(cmd, timeout=60)
+    clean_q = query.strip()
+    return run_argv("searchsploit", [clean_q], timeout=60)
 
 
 @tool(args_schema=LinpeasScanInput)
@@ -110,8 +110,7 @@ def linpeas_privilege_escalation_scan(script_path: Optional[str] = None) -> str:
     )
     if not (os.path.exists(target_script) and os.path.isfile(target_script)):
         return f"[TOOL ERROR] linpeas.sh script not found at {target_script}. Install with: sudo apt install peass-ng"
-    cmd = f"sh {target_script} -s -q"
-    return run_cmd(cmd, timeout=240, max_output=5000)
+    return run_argv("sh", [target_script, "-s", "-q"], timeout=240, max_output=5000)
 
 
 @tool(args_schema=ImpacketToolInput)
@@ -119,13 +118,15 @@ def impacket_tool_execute(tool_name: str, target: str, connection_string: str, e
     """Execute various Impacket framework tools for Windows/Active Directory assessment."""
     host = clean_target(target)
     bin_name = tool_name.strip()
-    cmd = f"{bin_name} '{connection_string}'@{host} {extra_args}".strip()
-    return run_cmd(cmd, timeout=180)
+    argv = [f"{connection_string}@{host}"]
+    if extra_args:
+        argv.extend(shlex.split(extra_args))
+    return run_argv(bin_name, argv, target=host, timeout=180)
 
 
 @tool(args_schema=ShellExecInput)
 def shell_exec(cmd: str, timeout: int = 60) -> str:
-    """Execute an arbitrary shell command on the host system. Use with extreme caution."""
+    """Execute an arbitrary command on the host system. Use with extreme caution."""
     safe_timeout = max(5, min(int(timeout), 300))
     return run_cmd(cmd, timeout=safe_timeout, max_output=3000)
 
@@ -152,7 +153,7 @@ def cve_lookup(query: str) -> str:
                 exploit_msg = "No public exploit found in local DB"
                 try:
                     if shutil.which("searchsploit"):
-                        ss_out = run_cmd(f"searchsploit --cve {cve_id} -w", timeout=10)
+                        ss_out = run_argv("searchsploit", ["--cve", cve_id, "-w"], timeout=10)
                         if "Exploit" in ss_out and "No Results" not in ss_out:
                             exploit_msg = "Public exploit available"
                 except Exception:

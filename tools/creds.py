@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 
 import shutil
-from tools.base import run_cmd, clean_target, find_wordlist
+from tools.base import run_argv, clean_target, find_wordlist
 
 
 class CrackMapExecInput(BaseModel):
@@ -47,17 +47,17 @@ def crackmapexec(target: str, protocol: str = "smb", username: str = "", passwor
     host = clean_target(target)
     bin_name = "nxc" if shutil.which("nxc") else "crackmapexec"
     valid_proto = protocol.lower() if protocol.lower() in ("smb", "ssh", "winrm", "mssql", "ftp", "ldap") else "smb"
-    base_cmd = f"{bin_name} {valid_proto} {host}"
+    argv = [valid_proto, host]
     if username:
-        base_cmd += f" -u '{username}'"
+        argv.extend(["-u", username])
     if password:
         if len(password) == 32 and all(c in "0123456789abcdefABCDEF" for c in password):
-            base_cmd += f" -H '{password}'"
+            argv.extend(["-H", password])
         else:
-            base_cmd += f" -p '{password}'"
+            argv.extend(["-p", password])
     if exec_cmd:
-        base_cmd += f" -x '{exec_cmd}'"
-    return run_cmd(base_cmd, timeout=180)
+        argv.extend(["-x", exec_cmd])
+    return run_argv(bin_name, argv, target=host, timeout=180)
 
 
 def _map_service_name(service: str) -> str:
@@ -84,26 +84,25 @@ def hydra_brute_force(
     """Execute network login brute-forcing or dictionary attacks against various services using Hydra."""
     host = clean_target(target)
     svc = _map_service_name(service)
-    args = ["hydra"]
+    argv = []
     if username:
-        args.extend(["-l", username])
+        argv.extend(["-l", username])
     else:
         ul = find_wordlist(
             user_list or "/usr/share/wordlists/metasploit/namelist.txt",
             ["/usr/share/seclists/Usernames/top-usernames-short.txt", "/usr/share/wordlists/dirb/common.txt"],
         )
-        args.extend(["-L", ul])
+        argv.extend(["-L", ul])
     if password:
-        args.extend(["-p", password])
+        argv.extend(["-p", password])
     else:
         pl = find_wordlist(
             password_list or "/usr/share/wordlists/dirb/common.txt",
             ["/usr/share/wordlists/fasttrack.txt", "/usr/share/seclists/Passwords/Common-Credentials/top-20-common-passwords.txt"],
         )
-        args.extend(["-P", pl])
-    args.extend(["-t", "4", "-I", host, svc])
-    cmd = " ".join(args)
-    return run_cmd(cmd, timeout=300)
+        argv.extend(["-P", pl])
+    argv.extend(["-t", "4", "-I", host, svc])
+    return run_argv("hydra", argv, target=host, timeout=300)
 
 
 @tool(args_schema=MetasploitAuxInput)
@@ -113,8 +112,8 @@ def metasploit_auxiliary_scanner(module: str, rhosts: str) -> str:
     clean_mod = module.strip()
     if clean_mod.startswith("auxiliary/"):
         clean_mod = clean_mod[len("auxiliary/"):]
-    cmd = f"msfconsole -q -x \"use auxiliary/{clean_mod}; set RHOSTS {host}; run; exit\""
-    return run_cmd(cmd, timeout=180, max_output=4000)
+    argv = ["-q", "-x", f"use auxiliary/{clean_mod}; set RHOSTS {host}; run; exit"]
+    return run_argv("msfconsole", argv, target=host, timeout=180, max_output=4000)
 
 
 @tool(args_schema=ReverseShellListenerInput)
@@ -124,5 +123,5 @@ def reverse_shell_listener(port: int, listen_timeout: int = 60) -> str:
         clean_port = int(port)
     except (ValueError, TypeError):
         clean_port = 4444
-    cmd = f"nc -lvnp {clean_port} -w {listen_timeout}"
-    return run_cmd(cmd, timeout=listen_timeout + 10)
+    argv = ["-lvnp", str(clean_port), "-w", str(listen_timeout)]
+    return run_argv("nc", argv, target="127.0.0.1", timeout=listen_timeout + 10)
