@@ -16,6 +16,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 
+from core.audit import AuditEventType, AuditLedger, DEFAULT_AUDIT_LEDGER
 from core.policy import DEFAULT_CAPABILITY_POLICY, CapabilityPolicy, TargetPolicy
 from core.vault import DEFAULT_VAULT, SecretVault
 
@@ -47,10 +48,12 @@ class ExecutionBroker:
         policy: Optional[TargetPolicy] = None,
         vault: Optional[SecretVault] = None,
         capability_policy: Optional[CapabilityPolicy] = None,
+        audit_ledger: Optional[AuditLedger] = None,
     ):
         self.policy = policy or TargetPolicy()
         self.vault = vault or DEFAULT_VAULT
         self.capability_policy = capability_policy or DEFAULT_CAPABILITY_POLICY
+        self.audit_ledger = audit_ledger or DEFAULT_AUDIT_LEDGER
         self.execution_history: list[ExecutionResult] = []
 
     def execute(
@@ -191,6 +194,18 @@ class ExecutionBroker:
                 output=err_msg,
             )
 
+        # Record execution outcome into cryptographic audit ledger
+        self.audit_ledger.record_event(
+            AuditEventType.PROCESS_END,
+            {
+                "execution_id": res.execution_id,
+                "executable": res.executable,
+                "exit_code": res.exit_code,
+                "duration_ms": res.duration_ms,
+                "target": target,
+                "approved": approved,
+            },
+        )
         self.execution_history.append(res)
         return res
 

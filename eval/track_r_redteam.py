@@ -10,6 +10,7 @@ Asserts production security properties of LONLY v2:
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import unittest
@@ -378,6 +379,44 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertIn(out.sha256, trail["ancestor_hashes"])
         self.assertIn(cmd.sha256, trail["ancestor_hashes"])
 
+    def test_r22_audit_ledger_cryptographic_chaining_and_tamper_detection(self):
+        """R22: AuditLedger enforces append-only HMAC hash chaining and detects tampering."""
+        import tempfile
+        from core.audit import AuditEventType, AuditLedger
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger_file = os.path.join(tmpdir, "test_ledger.jsonl")
+            ledger = AuditLedger(ledger_path=ledger_file, secret_key="TEST-SECRET-KEY")
+
+            # 1. Record events
+            e0 = ledger.record_event(AuditEventType.PROMPT, {"prompt": "scan 127.0.0.1"})
+            e1 = ledger.record_event(AuditEventType.DECISION, {"action": "run_nmap"})
+            e2 = ledger.record_event(AuditEventType.PROCESS_END, {"exit_code": 0})
+
+            self.assertEqual(e0.prev_hash, "0" * 64)
+            self.assertEqual(e1.prev_hash, e0.event_hash)
+            self.assertEqual(e2.prev_hash, e1.event_hash)
+
+            # 2. Verify pristine ledger
+            valid, msg, count = ledger.verify_integrity()
+            self.assertTrue(valid)
+            self.assertEqual(count, 3)
+
+            # 3. Tamper detection: reload ledger with modified line
+            with open(ledger_file, "r") as f:
+                lines = f.readlines()
+            # Alter payload of middle event
+            tampered_data = json.loads(lines[1])
+            tampered_data["payload"]["action"] = "malicious_injected_action"
+            lines[1] = json.dumps(tampered_data) + "\n"
+            with open(ledger_file, "w") as f:
+                f.writelines(lines)
+
+            tampered_ledger = AuditLedger(ledger_path=ledger_file, secret_key="TEST-SECRET-KEY")
+            valid, msg, count = tampered_ledger.verify_integrity()
+            self.assertFalse(valid)
+            self.assertIn("Payload altered", msg)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -408,6 +447,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R19 ResolvedTarget destination validation & rebinding defense", True, ""),
         ("R20 SecretVault capability scoping rotation & revocation", True, ""),
         ("R21 Forensic provenance trail and context IDs", True, ""),
+        ("R22 Cryptographic audit ledger hash chaining & tamper detection", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

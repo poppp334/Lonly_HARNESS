@@ -109,7 +109,7 @@ LONLY exposes **24 domain-modularized tools** organized under `tools/`:
 
 ## Evaluation & Acceptance Harness
 
-The repository includes an offline evaluation framework (`eval/eval_lonly.py`) with **62 acceptance checks**:
+The repository includes an offline evaluation framework (`eval/eval_lonly.py`) with **67 acceptance checks**:
 
 - **Track D (D1–D20)**: Guardrail policy verification, scope boundary enforcement, risk accounting, findings injection, and evidence gates.
 - **Track P (P1–P9)**: 4B-model ReAct parser resilience, markdown fence stripping, trailing comma tolerance, placeholder rejection, and overclaim validation.
@@ -117,7 +117,29 @@ The repository includes an offline evaluation framework (`eval/eval_lonly.py`) w
 - **Track C (C1–C4)**: Trajectory loop quality, duplicate invocation detection, and maximum output character truncation compliance.
 - **Track A (A1–A3)**: Scenario integration suite simulating web reconnaissance, privilege escalation specialist routing, and full 5-phase lifecycle chains.
 - **Track E (E1–E5)**: CLI interactive engine and edge-case unit tests (command parsing, denial/approval gates, risk checkpoint stop/redirect, fabrication intercept, and Unicode/Thai handling).
-- **Track R (R1–R17)**: Adversarial red team security suite (shell injection resilience, IPv6/CIDR TargetPolicy, URL parser confusion resistance, below-agent broker authorization, SecretVault token resolution, CapabilityPolicy descriptors, session log secret redaction, SHA-256 evidence graph integrity, DAG chain verification, indirect prompt injection provenance fencing, ClaimVerifier assertion validation, tamper-evident engagement report generation, and static analysis subprocess/shell invariants).
+- **Track R (R1–R22)**: Adversarial red team security suite:
+  - **R1**: Shell metacharacter injection resilience (`shell=False`)
+  - **R2**: `TargetPolicy` IPv6, bracketed IPv6, and CIDR scope enforcement
+  - **R3**: URL parser confusion & credential userinfo injection resistance
+  - **R4**: `ExecutionBroker` below-agent authorization boundary
+  - **R5**: Specialist SSH backend broker isolation & scope refusal
+  - **R6**: `SecretVault` storage & opaque token generation
+  - **R7**: `CapabilityPolicy` descriptor contracts
+  - **R8**: Session log automatic secret redaction
+  - **R9**: Content-addressable SHA-256 evidence graph
+  - **R10**: Evidence graph DAG chain verification
+  - **R11**: Provenance fencing indirect injection defense (`<untrusted_observation>`)
+  - **R12**: Fenced observation parser resilience
+  - **R13**: `ClaimVerifier` supported claim confirmation
+  - **R14**: `ClaimVerifier` hallucinated claim interception
+  - **R15**: Tamper-evident engagement report generation with SHA-256 proofs
+  - **R16**: Corrupted evidence node tamper detection
+  - **R17**: Static analysis invariant: zero `shell=True` / `os.system` / `os.popen`, `subprocess` isolated strictly to broker
+  - **R18**: `CapabilityPolicy` manifest authorization gates and permanent blocking
+  - **R19**: `ResolvedTarget` socket destination validation & DNS rebinding defense
+  - **R20**: `SecretVault` per-capability scoping, rotation, revocation, and zeroization
+  - **R21**: Forensic provenance trail correlation across full contextual IDs
+  - **R22**: Cryptographic audit ledger (`core/audit.py`) HMAC hash chaining & tamper detection
 - **Track B (B0)**: Subprocess-isolated smoke testing validating all 24 tools with zero side effects.
 
 Run the test suite:
