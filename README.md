@@ -132,7 +132,7 @@ LONLY exposes **24 domain-modularized tools** organized under `tools/` with all 
 
 ## Evaluation & Adversarial Hardening Suite
 
-LONLY v2 enforces zero technical debt and 100% deterministic safety verified by **81 acceptance checks** across 8 tracks:
+LONLY v2 enforces zero technical debt and 100% deterministic safety verified by **83 acceptance checks** across 8 tracks:
 
 - **Track D (D1–D20)**: Safety, Scope, Confirmation, State & Phase Invariants
 - **Track P (P1–P9)**: ReAct, Markdown Fence, Evidence & Overclaim Interception
@@ -140,7 +140,7 @@ LONLY v2 enforces zero technical debt and 100% deterministic safety verified by 
 - **Track C (C1–C4)**: Trajectory Quality, Duplication & Truncation Bounds
 - **Track A (A1–A3)**: Scenario Replays (Web Recon, Privesc Specialist, 5-Phase Chain)
 - **Track E (E1–E5)**: Live CLI Resilience, Unicode & Human-in-the-Loop Approval
-- **Track R (R1–R36)**: Comprehensive Red Team Adversarial & Cryptographic Suite:
+- **Track R (R1–R38)**: Comprehensive Red Team Adversarial & Cryptographic Suite:
   - `R1–R5`: Shell injection, CIDR IPv6, URL spoofing & specialist broker isolation
   - `R6–R8`: SecretVault token opaque references, zeroization & credential redaction
   - `R9–R16`: SHA-256 DAG evidence graph & tamper detection
@@ -152,7 +152,7 @@ LONLY v2 enforces zero technical debt and 100% deterministic safety verified by 
   - `R22`: Cryptographic audit ledger with HMAC-SHA256 write-ahead log hash chaining
   - `R23`: Typed security claims (`TypedClaim`) and general `ClaimVerifier`
   - `R24`: Deterministic structured fact extraction (`StructuredFactExtractor`)
-  - `R25`: OS sandbox profiles and process tree termination (`SandboxManager`)
+  - `R25`: OS sandbox profiles and process tree isolation (`SandboxManager`)
   - `R26`: First-class engagement model (`Organization`, `Engagement`, `RunRecord`, `ApprovalRecord`)
   - `R27`: DAG task graph orchestrator (`TaskGraphDAG`)
   - `R28`: Multi-dimensional risk policy engine (`RiskPolicyEngine`)
@@ -164,10 +164,12 @@ LONLY v2 enforces zero technical debt and 100% deterministic safety verified by 
   - `R34`: Distributed tracing and action provenance query (`TelemetryTracer`)
   - `R35`: Strict model boundary separation (`PlannerRole`, `SpecialistRole`, `VerifierRole`)
   - `R36`: Dual-mode conversation and persistent session workspaces (`SessionManager`)
+  - `R37`: Target anchor extraction and placeholder sanitization
+  - `R38`: Standard library CLI reader with arrow key history, line editing, and autocompletion
 - **Track B (B0)**: Per-tool subprocess smoke validation across all 24 tools
 
 ```bash
-# Run complete verification harness (81/81 checks)
+# Run complete verification harness (83/83 checks)
 LONLY_EVAL_PYTHON=~/pentest_env/bin/python ~/pentest_env/bin/python eval/eval_lonly.py
 ```
 
@@ -208,10 +210,14 @@ python pentest_agent.py
 
 ### Interactive CLI Commands
 - `[Target Objective]` — e.g., `Scan 127.0.0.1 for open ports` or ask `Explain Kerberoasting`
+- `/scope add <target>` — Add target IP, domain, or CIDR to authorized testing scope
+- `/scope list` — View all authorized target hosts and CIDRs
+- `/scope reset` — Reset scope to loopback only (127.0.0.1)
 - `/session list` — List all stored conversation sessions with message counts
 - `/session new [title]` — Create and switch to a fresh, isolated session workspace
-- `/session load <session_id>` — Restore a prior session transcript
+- `/session load <id>` — Restore a prior session transcript
 - `/report` — Generate cryptographic Markdown engagement report
+- `/doctor` — Run full system diagnostic & tool health suite
 - `/clear` — Reset session memory and in-memory findings state
 - `exit` / `quit` — Shutdown LONLY
 
@@ -227,16 +233,18 @@ Lonly_HARNESS/
 │   ├── audit.py              # Cryptographic HMAC-SHA256 WAL audit ledger
 │   ├── benchmarks.py         # Ground-truth lab benchmark evaluation engine
 │   ├── broker.py             # ExecutionBroker & CapabilityPolicy enforcement
+│   ├── cli_reader.py         # Arrow key history, line editing & autocompletion
+│   ├── doctor.py             # System diagnostic and dependency health checker
 │   ├── engagement.py         # Organization, Engagement, Run, and Approval entities
 │   ├── evidence.py           # Content-addressable DAG evidence graph & TypedClaims
 │   ├── extractor.py          # Structured fact extractor for prompt context hygiene
 │   ├── fuzz.py               # Property-based adversarial fuzzer
 │   ├── guardrails.py         # Scope control, confirmation gates, risk budgeting
+│   ├── job_queue.py          # Transactional job queue & circuit breaker
 │   ├── metrics.py            # Operational metrics & zero-defect SLA engine
 │   ├── orchestrator.py       # DAG task graph orchestrator
 │   ├── parser.py             # Resilient ReAct/JSON parsing & overclaim validators
 │   ├── policy.py             # TargetPolicy, CapabilityPolicy, ResolvedTarget
-│   ├── queue.py              # Transactional job queue & circuit breaker
 │   ├── risk.py               # Multi-dimensional risk matrix & decision gates
 │   ├── sandbox.py            # OS sandbox profiles & process containment
 │   ├── session.py            # Persistent session workspaces & context management
@@ -255,12 +263,12 @@ Lonly_HARNESS/
 │   └── smoke_test.py         # Specialist verification smoke test
 ├── eval/                     # Test & Evaluation Harness
 │   ├── ci_security_gate.py   # Automated CI/CD security gate & invariant checker
-│   ├── eval_lonly.py         # Main acceptance runner (81/81 checks)
+│   ├── eval_lonly.py         # Main acceptance runner (83/83 checks)
 │   ├── track_a_runner.py     # Scenario integration suite
 │   ├── track_b_worker.py     # Subprocess-isolated tool smoke worker
 │   ├── track_c_scorer.py     # Trajectory and loop quality scorer
 │   ├── track_e_cli.py        # CLI interactive & edge case test suite
-│   └── track_r_redteam.py    # 36-check adversarial red team suite
+│   └── track_r_redteam.py    # 38-check adversarial red team suite
 ├── docs/                     # Technical specifications & roadmap
 │   ├── Plan-implement.md     # Production hardening roadmap
 │   └── cybersecurity-harness-research.md

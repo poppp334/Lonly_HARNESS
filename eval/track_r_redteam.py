@@ -768,6 +768,24 @@ class TestRedTeamHarness(unittest.TestCase):
         sanitized_web = sanitize_hallucinated_targets(hallucinated_web_args, "webme-mu.vercel.app")
         self.assertEqual(sanitized_web["target_url"], "http://webme-mu.vercel.app")
 
+    def test_r38_cli_reader_arrow_history_and_autocompletion(self):
+        """R38: Standard library CLI reader enables arrow key history, line editing, and command autocompletion."""
+        import tempfile
+        from pathlib import Path
+        from core.cli_reader import setup_cli_readline, create_completer
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            hist_file = Path(tmp_dir) / "history"
+            success = setup_cli_readline(history_file=hist_file)
+            self.assertTrue(success)
+
+            # Test tab autocompleter
+            completer = create_completer()
+            match1 = completer("/sc", 0)
+            self.assertEqual(match1, "/scope")
+            match2 = completer("/doc", 0)
+            self.assertEqual(match2, "/doctor")
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -814,6 +832,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R35 Formal model boundary and role separation", True, ""),
         ("R36 Dual-mode conversation and session persistence", True, ""),
         ("R37 Target anchor extraction and placeholder sanitization", True, ""),
+        ("R38 CLI reader arrow history and autocompletion", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
