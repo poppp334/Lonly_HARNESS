@@ -74,10 +74,13 @@ def run_argv(
     Delegates to pentest_agent.run_cmd/run_argv if monkeypatched by test harnesses.
     """
     pa = sys.modules.get("pentest_agent")
+    if pa is not None and hasattr(pa, "run_argv"):
+        pa_fn = getattr(pa, "run_argv")
+        if callable(pa_fn) and pa_fn is not run_argv:
+            return pa_fn(executable, argv, target=target, timeout=timeout, max_output=max_output, broker=broker)
     if pa is not None and hasattr(pa, "run_cmd"):
         pa_fn = getattr(pa, "run_cmd")
         if callable(pa_fn) and pa_fn is not run_cmd:
-            # If monkeypatched with single string signature
             cmd_str = f"{executable} {' '.join(str(a) for a in argv)}"
             return pa_fn(cmd_str, timeout=timeout, max_output=max_output)
 

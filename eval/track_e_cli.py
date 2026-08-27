@@ -60,7 +60,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         
         with patch("pentest_agent.llm", mock_llm), \
              patch("builtins.input", return_value="n"), \
-             patch("pentest_agent.run_cmd", return_value="root"):
+             patch("pentest_agent.run_argv", return_value="root"):
             out = pa.run_react_agent("test shell_exec deny")
             self.assertIn("Denied and stopped", out)
             # Confirm denial was passed back to LLM
@@ -77,7 +77,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         ]
         with patch("pentest_agent.llm", mock_llm), \
              patch("builtins.input", return_value="y"), \
-             patch("pentest_agent.run_cmd", return_value="root"):
+             patch("pentest_agent.run_argv", return_value="root"):
             out = pa.run_react_agent("test shell_exec allow")
             self.assertIn("Command executed successfully", out)
 
@@ -90,7 +90,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         with patch("pentest_agent.llm", mock_llm), \
              patch("pentest_agent.RISK_CHECKPOINT_THRESHOLD", 1), \
              patch("builtins.input", return_value="s"), \
-             patch("pentest_agent.run_cmd", return_value="Open 127.0.0.1:80"):
+             patch("pentest_agent.run_argv", return_value="Open 127.0.0.1:80"):
             out = pa.run_react_agent("test checkpoint stop")
             self.assertIn("[CHECKPOINT STOP]", out)
 
@@ -101,7 +101,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         with patch("pentest_agent.llm", mock_llm), \
              patch("pentest_agent.RISK_CHECKPOINT_THRESHOLD", 1), \
              patch("builtins.input", return_value="r"), \
-             patch("pentest_agent.run_cmd", return_value="Open 127.0.0.1:80"):
+             patch("pentest_agent.run_argv", return_value="Open 127.0.0.1:80"):
             init_task = pa._task_number
             out = pa.run_react_agent("test checkpoint redirect")
             self.assertIn("[CHECKPOINT REDIRECT]", out)
@@ -130,7 +130,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         ]
         with patch("pentest_agent.llm", mock_llm), \
              patch("builtins.input", return_value="y"), \
-             patch("pentest_agent.run_cmd", return_value="Scanned 1 of 1 hosts (00% complete)\nAuxiliary module execution completed"):
+             patch("pentest_agent.run_argv", return_value="Scanned 1 of 1 hosts (00% complete)\nAuxiliary module execution completed"):
             out = pa.run_react_agent("test overclaim")
             self.assertIn("[POSSIBLE OVERCLAIM]", out)
 

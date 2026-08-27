@@ -58,12 +58,17 @@ DEFAULT_LIMIT = 4000
 
 
 def main() -> int:
-    calls: list[tuple[str, int]] = []
+    calls: list[tuple[str, list[str], int]] = []
 
-    def fake_run_cmd(cmd, timeout=120, max_output=4000):
-        calls.append((cmd, max_output))
+    def fake_run_argv(executable, argv, target=None, timeout=120, max_output=4000, broker=None):
+        calls.append((executable, list(argv), max_output))
         return "FAKE OUTPUT\n" * 100
 
+    def fake_run_cmd(cmd, timeout=120, max_output=4000):
+        calls.append((cmd, [], max_output))
+        return "FAKE OUTPUT\n" * 100
+
+    pa.run_argv = fake_run_argv
     pa.run_cmd = fake_run_cmd
     fails = []
     for name in sorted(pa.tool_map.keys()):
@@ -79,13 +84,13 @@ def main() -> int:
                 fails.append(f"{name}: non-str return {type(out).__name__}")
                 continue
             tool_calls = calls[n_before:]
-            if tool_calls:  # run_cmd-based wrapper: assert truncation contract
+            if tool_calls:  # argv-based wrapper: assert truncation contract
                 expected = LIMITS.get(name, DEFAULT_LIMIT)
-                limit_ok = any(mo == expected for _, mo in tool_calls)
+                limit_ok = any(mo == expected for _, _, mo in tool_calls)
                 if not limit_ok:
-                    got = [mo for _, mo in tool_calls]
+                    got = [mo for _, _, mo in tool_calls]
                     fails.append(f"{name}: max_output contract {expected} not in {got}")
-            # no run_cmd call => pure-Python wrapper (bloodhound/rag/cve): str return suffices
+            # pure-Python wrapper (bloodhound/rag/cve): str return suffices
         except Exception as e:  # noqa: BLE001 — worker reports, harness aggregates
             fails.append(f"{name}: {type(e).__name__}: {e}")
 

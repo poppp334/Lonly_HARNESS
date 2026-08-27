@@ -131,11 +131,7 @@ def run_track_c_fixtures() -> dict[str, bool]:
     )
 
     # Fixture C4: Truncation threshold contract
-    long_output = "A" * 5000 + "\nFLAG{test_token_in_excess}"
-    from tools.base import run_cmd
-    from tools.recon import nmap_security_scan
-    # Verify default truncation contract is respected
-    from tools.base import _exec_cmd
-    results["C4 truncation contract respected"] = len(_exec_cmd("python3 -c 'print(\"A\"*5000)'", max_output=4000)) <= 4050
+    from tools.base import run_argv
+    results["C4 truncation contract respected"] = len(run_argv("python3", ["-c", 'print("A"*5000)'], max_output=4000)) <= 4050
 
     return results

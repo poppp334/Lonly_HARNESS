@@ -17,7 +17,7 @@ import requests
 import os
 import shlex
 import shutil
-from tools.base import run_argv, run_cmd, clean_target, find_wordlist
+from tools.base import run_argv, clean_target, find_wordlist
 
 try:
     from langchain_huggingface import HuggingFaceEmbeddings
@@ -126,9 +126,12 @@ def impacket_tool_execute(tool_name: str, target: str, connection_string: str, e
 
 @tool(args_schema=ShellExecInput)
 def shell_exec(cmd: str, timeout: int = 60) -> str:
-    """Execute an arbitrary command on the host system. Use with extreme caution."""
+    """Execute an arbitrary command on the host system via safe ExecutionBroker (shell=False)."""
     safe_timeout = max(5, min(int(timeout), 300))
-    return run_cmd(cmd, timeout=safe_timeout, max_output=3000)
+    parts = shlex.split(cmd.strip())
+    if not parts:
+        return "[ERROR] Empty command string."
+    return run_argv(parts[0], parts[1:], timeout=safe_timeout, max_output=3000)
 
 
 @tool(args_schema=CVELookupInput)

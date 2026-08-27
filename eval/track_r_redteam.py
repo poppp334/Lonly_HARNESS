@@ -21,7 +21,7 @@ if ROOT not in sys.path:
 
 from core.broker import ExecutionBroker, ExecutionResult
 from core.policy import TargetPolicy
-from tools.base import run_argv, run_cmd
+from tools.base import run_argv
 
 
 class TestRedTeamHarness(unittest.TestCase):
@@ -252,6 +252,29 @@ class TestRedTeamHarness(unittest.TestCase):
         verified, total, corrupt = graph.verify_all()
         self.assertEqual(len(corrupt), 1)
 
+    def test_r17_static_analysis_execution_broker_invariant(self):
+        """R17: Static analysis asserts subprocess.run is ONLY in core/broker.py and no shell=True exists."""
+        import glob
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        prod_files = (
+            glob.glob(os.path.join(root_dir, "tools", "*.py"))
+            + glob.glob(os.path.join(root_dir, "core", "*.py"))
+            + [os.path.join(root_dir, "pentest_agent.py")]
+        )
+
+        for fpath in prod_files:
+            rel = os.path.relpath(fpath, root_dir)
+            with open(fpath, "r", encoding="utf-8") as fh:
+                content = fh.read()
+
+            self.assertNotIn("shell=True", content, f"Forbidden shell=True found in {rel}")
+            self.assertNotIn("os.system", content, f"Forbidden os.system found in {rel}")
+            self.assertNotIn("os.popen", content, f"Forbidden os.popen found in {rel}")
+
+            if "core/broker.py" not in rel:
+                self.assertNotIn("subprocess.run", content, f"subprocess.run found outside broker in {rel}")
+                self.assertNotIn("subprocess.Popen", content, f"subprocess.Popen found outside broker in {rel}")
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -277,6 +300,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R14 ClaimVerifier hallucinated claim interception", True, ""),
         ("R15 Engagement report generation with SHA-256 proof", True, ""),
         ("R16 Corrupted evidence node tamper detection", True, ""),
+        ("R17 Static analysis subprocess & shell invariant", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

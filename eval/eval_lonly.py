@@ -167,12 +167,12 @@ def track_p() -> None:
 # Track M — modular architecture contracts (offline)
 # ---------------------------------------------------------------------------
 def track_m() -> None:
-    from tools.base import run_cmd, TOOL_FAILURE_PATTERNS
+    from tools.base import run_argv, TOOL_FAILURE_PATTERNS
     from tools import ALL_TOOLS, tool_map
 
     check("M1 exactly 24 tools in registry", len(ALL_TOOLS) == 24 and len(tool_map) == 24)
     check("M2 all tools have unique names", len(set(t.name for t in ALL_TOOLS)) == 24)
-    check("M3 tools base wrapper contract", callable(run_cmd) and len(TOOL_FAILURE_PATTERNS) >= 5)
+    check("M3 tools base wrapper contract", callable(run_argv) and len(TOOL_FAILURE_PATTERNS) >= 5)
 
 
 # ---------------------------------------------------------------------------

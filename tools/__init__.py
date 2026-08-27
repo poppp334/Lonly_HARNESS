@@ -10,7 +10,7 @@ Categorized into:
 
 from __future__ import annotations
 
-from tools.base import run_cmd, TOOL_FAILURE_PATTERNS
+from tools.base import run_argv, TOOL_FAILURE_PATTERNS
 from tools.recon import (
     NmapScanInput, nmap_security_scan,
     RustScanInput, rustscan_port_scan,
