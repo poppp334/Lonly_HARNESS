@@ -245,24 +245,28 @@ def extract_explicit_targets_from_text(text: str) -> list[str]:
         return []
 
     targets = []
-    # 1. Full URLs
+    # 1. Full URLs e.g. https://webme-mu.vercel.app/
     urls = re.findall(r"https?://([a-zA-Z0-9.-]+)", text, re.IGNORECASE)
     for u in urls:
         clean = u.strip().strip("/")
         if clean and clean not in targets:
             targets.append(clean)
 
-    # 2. IPv4 / CIDR
+    # 2. IPv4 / CIDR e.g. 192.168.1.1 or 10.0.0.0/24
     ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b", text)
     for ip in ips:
         if ip not in targets:
             targets.append(ip)
 
-    # 3. Domain names
-    domains = re.findall(r"\b[a-zA-Z0-9-]+\.(?:com|org|net|io|app|dev|local|lab|internal|edu|gov|co|th|uk|de|fr|info|xyz|me|mu|ai)\b", text, re.IGNORECASE)
-    for d in domains:
+    # 3. Multi-level FQDNs / Domain names e.g. webme-mu.vercel.app, api.corp.local
+    fqdn_pattern = re.compile(
+        r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}\b",
+        re.IGNORECASE
+    )
+    for d in fqdn_pattern.findall(text):
         clean = d.strip().lower()
-        if clean and clean not in targets and not clean.endswith(".py") and not clean.endswith(".md"):
+        # Exclude common source code / document extensions
+        if clean and clean not in targets and not clean.endswith((".py", ".md", ".sh", ".json", ".txt", ".bin", ".lock", ".log")):
             targets.append(clean)
 
     return targets
@@ -275,11 +279,11 @@ PLACEHOLDER_DOMAINS = {
 
 
 def sanitize_hallucinated_targets(tool_args: dict[str, Any], explicit_target: Optional[str]) -> dict[str, Any]:
-    """Substitute hallucinated boilerplate domains (e.g. www.example.com) with the user's explicit target."""
+    """Substitute hallucinated boilerplate or truncated parent domains with the user's explicit target."""
     if not explicit_target or not isinstance(tool_args, dict):
         return tool_args
 
-    clean_target = explicit_target.split("://")[-1].split("/")[0].split(":")[0].strip()
+    clean_target = explicit_target.split("://")[-1].split("/")[0].split(":")[0].strip().lower()
     sanitized = dict(tool_args)
 
     for k, v in sanitized.items():
@@ -287,7 +291,14 @@ def sanitize_hallucinated_targets(tool_args: dict[str, Any], explicit_target: Op
             v_lower = v.strip().lower()
             v_host = v_lower.split("://")[-1].split("/")[0].split(":")[0].strip()
 
-            if v_lower in PLACEHOLDER_DOMAINS or v_host in PLACEHOLDER_DOMAINS:
+            is_placeholder = v_lower in PLACEHOLDER_DOMAINS or v_host in PLACEHOLDER_DOMAINS
+            is_truncated_parent = (
+                clean_target != v_host 
+                and clean_target.endswith("." + v_host) 
+                and v_host not in ("localhost", "127.0.0.1", "::1")
+            )
+
+            if is_placeholder or is_truncated_parent:
                 if k in ("target_url", "url"):
                     scheme = "https://" if "https" in v_lower else "http://"
                     sanitized[k] = f"{scheme}{clean_target}"

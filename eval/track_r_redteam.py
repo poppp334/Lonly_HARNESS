@@ -752,17 +752,28 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertIn("LONLY", greeting_res)
 
     def test_r37_target_anchor_extraction_and_hallucination_sanitization(self):
-        """R37: Explicit user target URLs are extracted and placeholder domains (www.example.com) are sanitized."""
+        """R37: Explicit user target URLs/FQDNs are extracted and placeholder/parent domains are sanitized."""
         from core.parser import extract_explicit_targets_from_text, sanitize_hallucinated_targets
 
         multiline_prompt = "can you do recon on this website\n  https://webme-mu.vercel.app/"
         extracted = extract_explicit_targets_from_text(multiline_prompt)
         self.assertIn("webme-mu.vercel.app", extracted)
 
+        # Test raw multi-level domain without URL scheme
+        raw_prompt = "do recon for me on this web webme-mu.vercel.app"
+        extracted_raw = extract_explicit_targets_from_text(raw_prompt)
+        self.assertIn("webme-mu.vercel.app", extracted_raw)
+
+        # Test boilerplate placeholder replacement
         hallucinated_args = {"target": "www.example.com", "ports": "80,443"}
         sanitized = sanitize_hallucinated_targets(hallucinated_args, "webme-mu.vercel.app")
         self.assertEqual(sanitized["target"], "webme-mu.vercel.app")
         self.assertEqual(sanitized["ports"], "80,443")
+
+        # Test truncated parent domain replacement (e.g. vercel.app -> webme-mu.vercel.app)
+        parent_web_args = {"target_url": "http://vercel.app"}
+        sanitized_parent = sanitize_hallucinated_targets(parent_web_args, "webme-mu.vercel.app")
+        self.assertEqual(sanitized_parent["target_url"], "http://webme-mu.vercel.app")
 
         hallucinated_web_args = {"target_url": "http://ip"}
         sanitized_web = sanitize_hallucinated_targets(hallucinated_web_args, "webme-mu.vercel.app")
