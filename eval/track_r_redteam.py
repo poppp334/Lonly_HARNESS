@@ -727,6 +727,30 @@ class TestRedTeamHarness(unittest.TestCase):
         verdict_bad = verifier.verify_security_claim(claim_invalid)
         self.assertFalse(verdict_bad.is_valid)
 
+    def test_r36_dual_mode_conversation_and_session_persistence(self):
+        """R36: Dual-mode agent handles conversational greetings without tools and manages session transcripts."""
+        import tempfile
+        from core.session import SessionManager
+        import pentest_agent as pa
+
+        # 1. Test SessionManager creation, persistence, and loading
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            sm = SessionManager(base_dir=tmp_dir)
+            s1 = sm.create_session(title="Alpha Pentest")
+            sm.append_message(s1, "user", "Hi")
+            sm.append_message(s1, "assistant", "Hello! How can I assist you?")
+
+            loaded = sm.load_session(s1.session_id)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(len(loaded.messages), 2)
+            self.assertEqual(loaded.messages[0].content, "Hi")
+            self.assertEqual(loaded.messages[1].content, "Hello! How can I assist you?")
+
+        # 2. Test conversational fast-path in pentest_agent
+        greeting_res = pa.run_react_agent("Hi")
+        self.assertIn("Hello!", greeting_res)
+        self.assertIn("LONLY", greeting_res)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -771,6 +795,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R33 Transactional job queue and circuit breaker", True, ""),
         ("R34 First-class distributed tracing and action provenance", True, ""),
         ("R35 Formal model boundary and role separation", True, ""),
+        ("R36 Dual-mode conversation and session persistence", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
