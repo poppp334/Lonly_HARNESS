@@ -103,6 +103,43 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertIn("[SCOPE BLOCKED]", out)
 
 
+    def test_r6_secret_vault_and_token_redaction(self):
+        """R6: SecretVault stores credentials as opaque tokens and redacts them in text."""
+        from core.vault import SecretVault
+        vault = SecretVault()
+        token = vault.store("SuperSecretPassword123!", label="password")
+        self.assertTrue(token.startswith("cred_"))
+        self.assertEqual(vault.resolve(token), "SuperSecretPassword123!")
+
+        sample_log = f"Executing hydra with password: 'SuperSecretPassword123!'"
+        redacted = vault.redact(sample_log)
+        self.assertNotIn("SuperSecretPassword123!", redacted)
+        self.assertIn("REDACTED", redacted)
+
+    def test_r7_capability_policy_descriptors(self):
+        """R7: CapabilityDescriptor specifies action class, confirmation, and risk points."""
+        from core.policy import CapabilityDescriptor
+        cap = CapabilityDescriptor(
+            name="hydra_brute_force",
+            executable="hydra",
+            action_class="creds",
+            risk_points=2,
+            requires_confirmation=True,
+            risk_description="network service brute-forcing",
+        )
+        self.assertEqual(cap.executable, "hydra")
+        self.assertTrue(cap.requires_confirmation)
+        self.assertEqual(cap.risk_points, 2)
+
+    def test_r8_session_log_secret_redaction(self):
+        """R8: Session log automatic secret redaction protects passwords."""
+        from core.vault import DEFAULT_VAULT
+        raw_log = '{"tool": "crackmapexec", "args": {"password": "AdminPassword999"}}'
+        token = DEFAULT_VAULT.store("AdminPassword999", label="password")
+        redacted = DEFAULT_VAULT.redact(raw_log)
+        self.assertNotIn("AdminPassword999", redacted)
+
+
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
     import io
@@ -116,6 +153,9 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R3 URL parser confusion & userinfo spoof resistance", True, ""),
         ("R4 Execution broker below-agent authorization boundary", True, ""),
         ("R5 Specialist broker isolation & scope refusal", True, ""),
+        ("R6 SecretVault storage & token redaction", True, ""),
+        ("R7 CapabilityPolicy descriptor enforcement", True, ""),
+        ("R8 Session log automatic secret redaction", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

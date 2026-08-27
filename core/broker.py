@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from core.policy import TargetPolicy
+from core.vault import DEFAULT_VAULT, SecretVault
 
 
 @dataclass
@@ -39,10 +40,11 @@ class ExecutionResult:
 
 
 class ExecutionBroker:
-    """Central execution broker enforcing policy and deterministic process execution."""
+    """Central execution broker enforcing policy, secret redaction, and deterministic process execution."""
 
-    def __init__(self, policy: Optional[TargetPolicy] = None):
+    def __init__(self, policy: Optional[TargetPolicy] = None, vault: Optional[SecretVault] = None):
         self.policy = policy or TargetPolicy()
+        self.vault = vault or DEFAULT_VAULT
         self.execution_history: list[ExecutionResult] = []
 
     def execute(

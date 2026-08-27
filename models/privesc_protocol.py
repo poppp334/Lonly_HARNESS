@@ -308,8 +308,14 @@ class PrivescSpecialist:
             "user": self.opts["user"],
             "trajectory": self.trajectory,
         }
+        raw_json = json.dumps(record, ensure_ascii=False)
+        try:
+            from core.vault import DEFAULT_VAULT
+            raw_json = DEFAULT_VAULT.redact(raw_json)
+        except Exception:
+            pass
         with open(self.trajectory_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.write(raw_json + "\n")
 
     def _finish(self, success: bool, turns: int, messages: list[dict], reason: str) -> dict:
         return {
