@@ -14,7 +14,7 @@ help:
 	@echo "  LONLY v2 — Management & Automation"
 	@echo "========================================================================"
 	@echo "  make run        : Launch LONLY interactive Dual-Mode CLI shell"
-	@echo "  make test       : Run 81-check acceptance & security evaluation suite"
+	@echo "  make test       : Run 83-check acceptance & security evaluation suite"
 	@echo "  make doctor     : Run comprehensive system health and dependency check"
 	@echo "  make ingest     : Build RAG vector knowledge base from knowledge/*.md"
 	@echo "  make setup      : Install Python dependencies & pull Ollama model"
@@ -49,6 +49,7 @@ sessions:
 	@$(PYTHON) -c "from core.session import SessionManager; sm = SessionManager(); print('\n=== Stored Sessions ==='); [print(f\"- {s['session_id']}: {s['title']} ({s['message_count']} msgs)\") for s in sm.list_sessions()]"
 
 clean:
-	@rm -rf __pycache__ core/__pycache__ tools/__pycache__ eval/__pycache__ models/__pycache__
+	@rm -rf __pycache__ core/__pycache__ tools/__pycache__ eval/__pycache__ models/__pycache__ models/sft/__pycache__
+	@rm -rf unsloth_compiled_cache models/sft/unsloth_compiled_cache
 	@rm -f session_log.jsonl
 	@echo "[+] Cleaned temporary files and bytecode caches."
