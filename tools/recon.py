@@ -99,7 +99,7 @@ def rustscan_port_scan(
 ) -> str:
     """Ultra-fast port scanner (RustScan). Discovers open ports across 1-65535 in seconds."""
     host = clean_target(target)
-    argv = ["-a", host]
+    argv = ["--no-banner", "-a", host]
     argv.extend(_format_rustscan_ports(ports))
     if ulimit:
         argv.extend(["--ulimit", str(ulimit)])
