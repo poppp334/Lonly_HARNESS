@@ -31,12 +31,13 @@ LONLY v2 decouples probabilistic LLM reasoning from deterministic security, isol
 3. **Execution Broker & OS Containment (`core/broker.py`, `core/sandbox.py`)**:
    - **Strict Subprocess Invariant**: Static AST enforcement ensuring zero `shell=True`, `os.system`, or `os.popen`. All 24 tools pass discrete `argv` vectors to `run_argv()`.
    - **Resource Quotas & Process Group Isolation**: POSIX memory, CPU, PID limits (`SandboxProfile`), and clean process-tree termination on timeout.
+   - **Automated Output Redaction**: Broker integrates directly with `SecretVault.redact()` to sanitize credentials from outputs before reaching logs or agent memory.
 4. **Secret Management Boundary (`core/vault.py`)**:
    - Random opaque references (`cred_<hex>`), capability-scoped access, rotation, revocation, in-memory zeroization, and automatic log redaction.
 5. **Persistent Session Workspaces & Memory (`core/session.py`)**:
-   - Isolated per-session JSONL workspaces (`~/.lonly/sessions/<session_id>/`), rolling context window compaction, and zero cross-session job crosstalk.
+   - Isolated per-session JSONL workspaces (`~/.lonly/sessions/<session_id>/`), rolling context window compaction, dynamic scope state isolation, and zero cross-session crosstalk.
 6. **Forensic Evidence & Tamper-Evident Ledger (`core/evidence.py`, `core/audit.py`, `core/telemetry.py`)**:
-   - **Content-Addressable DAG**: SHA-256 evidence graph tracking execution chains from report claims down to the exact operator and tool output.
+   - **Content-Addressable DAG**: SHA-256 evidence graph tracking execution chains from report claims down to the exact operator and tool output with lazy persistence.
    - **Cryptographic Audit Ledger**: HMAC-SHA256 write-ahead log (WAL) hash chaining with offline mathematical integrity verification.
    - **Distributed Tracing**: Distributed spans answering *"Why did LONLY run this action?"* in a single provenance query.
 
@@ -205,10 +206,12 @@ make run
 ```
 
 ### Interactive CLI Commands & Navigation
-- **Arrow Key Navigation**: `↑` / `↓` cycle command history persisted in `~/.lonly/history` (1,000 commands), `←` / `→` in-line cursor editing.
+- **Real-Time Thinking & Status Indicators**: Real-time feedback (`[*] LONLY is analyzing and planning...`) during local LLM token generation, with post-processing that converts raw model tags into clean Markdown.
+- **Arrow Key Navigation & History**: `↑` / `↓` cycle command history persisted in `~/.lonly/history` (1,000 commands), `←` / `→` in-line cursor editing decoupled from prompt headers.
 - **Tab Autocompletion**: Autocompletes `/scope`, `/session`, `/report`, `/doctor`, `/clear`, `exit`, and session IDs.
 - **Target Extraction**: RFC-compliant multi-level FQDN and IP extraction directly from conversational prompts (e.g., `webme-mu.vercel.app`).
 - **Interactive Scope Gating**: Real-time human-in-the-loop authorization prompt before any tool accesses a new network host.
+- **Session Scope Isolation**: Scope allowlists are strictly tied to active session workspaces and automatically cleared on `/clear` and `/session new`.
 
 | Command | Action |
 | :--- | :--- |
@@ -217,11 +220,11 @@ make run
 | `/scope list` | View all authorized target hosts and CIDRs in active session |
 | `/scope reset` | Reset scope to default loopback only (`127.0.0.1`, `localhost`, `::1`) |
 | `/session list` | List all stored conversation sessions with timestamp & message counts |
-| `/session new [title]` | Create and switch to a fresh, isolated session workspace |
-| `/session load <id>` | Restore a prior session workspace from `~/.lonly/sessions/<id>/` |
+| `/session new [title]` | Create and switch to a fresh, isolated session workspace (clears scope) |
+| `/session load <id>` | Restore a prior session workspace from `~/.lonly/sessions/<id>/` (restores scope) |
 | `/report` | Generate cryptographically signed Markdown engagement report with SHA-256 evidence chain |
 | `/doctor` | Run comprehensive system diagnostic & tool health suite |
-| `/clear` | Reset active conversation memory and in-memory findings state |
+| `/clear` | Reset active conversation memory, in-memory findings, and authorized scope |
 | `exit` / `quit` | Safely shutdown LONLY |
 
 ---
