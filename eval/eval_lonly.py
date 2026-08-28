@@ -243,6 +243,16 @@ def track_b() -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Track DLT — Dynamics Language Test (DLT) framework invariants
+# ---------------------------------------------------------------------------
+def track_dlt() -> None:
+    from eval.track_dlt import run_track_dlt, RESULTS as DLT_RESULTS
+    run_track_dlt()
+    for name, passed, detail in DLT_RESULTS:
+        check(name, passed, detail)
+
+
 def main() -> int:
     print(f"=== LONLY eval — {os.path.basename(ROOT)} ===")
     track_d()
@@ -252,6 +262,7 @@ def main() -> int:
     track_a()
     track_e()
     track_r()
+    track_dlt()
     track_b()
     failed = [r for r in RESULTS if not r[1]]
     print(f"\n=== RESULT: {len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed ===")
@@ -260,3 +271,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

@@ -3,7 +3,7 @@
 # Production Task & Management Automation Makefile
 # ============================================================================
 
-.PHONY: help run test doctor ingest setup clean lint sessions
+.PHONY: help run test doctor ingest setup clean lint sessions dlt-benchmark dlt-tune
 
 # Detect Python environment: preference to active venv, then ~/pentest_env, then system python3
 VENV_DIR ?= $(HOME)/pentest_env
@@ -13,14 +13,23 @@ help:
 	@echo "========================================================================"
 	@echo "  LONLY v2 — Management & Automation"
 	@echo "========================================================================"
-	@echo "  make run        : Launch LONLY interactive Dual-Mode CLI shell"
-	@echo "  make test       : Run 84-check acceptance & security evaluation suite"
-	@echo "  make doctor     : Run comprehensive system health and dependency check"
-	@echo "  make ingest     : Build RAG vector knowledge base from knowledge/*.md"
-	@echo "  make setup      : Install Python dependencies & pull Ollama model"
-	@echo "  make sessions   : List stored conversation sessions"
-	@echo "  make clean      : Remove bytecode caches, temporary logs, and locks"
+	@echo "  make run           : Launch LONLY interactive Dual-Mode CLI shell"
+	@echo "  make test          : Run acceptance, security & DLT evaluation suite"
+	@echo "  make dlt-benchmark : Run Tier 1 Gold Standard DLT benchmark scorecard"
+	@echo "  make dlt-tune      : Run closed-loop DLT hyperparameter optimization"
+	@echo "  make doctor        : Run comprehensive system health and dependency check"
+	@echo "  make ingest        : Build RAG vector knowledge base from knowledge/*.md"
+	@echo "  make setup         : Install Python dependencies & pull Ollama model"
+	@echo "  make sessions      : List stored conversation sessions"
+	@echo "  make clean         : Remove bytecode caches, temporary logs, and locks"
 	@echo "========================================================================"
+
+dlt-benchmark:
+	@$(PYTHON) -c "from core.dlt import DLTEngine; import json; res = DLTEngine().run_benchmark(); print('\n=== DLT Benchmark Scorecard ==='); print(json.dumps(res, indent=2, ensure_ascii=False))"
+
+dlt-tune:
+	@$(PYTHON) -c "from core.dlt import DLTEngine; print('[+] Launching DLT closed-loop tuning...'); res = DLTEngine().run_benchmark(); print('[+] Optimal configuration identified. Score:', res.get('composite_score'))"
+
 
 run:
 	@$(PYTHON) pentest_agent.py
