@@ -15,23 +15,23 @@ from tools.base import run_argv, clean_target, ensure_url
 
 class NmapScanInput(BaseModel):
     target: str = Field(..., description="The target IP, hostname, or CIDR subnet to scan.")
-    ports: Optional[str] = Field(default=None, description="Specific ports to scan (e.g. '80,443', '1-1000'). If None, scans top 1000 ports.")
+    ports: Optional[str] = Field(default=None, description="Ports to scan: 'top-1000' (default, fast/clean), 'top-100', 'web' (80,443,8080,8443), 'common', specific ports (e.g. '80,443,22'), or '1-65535'.")
     scan_type: str = Field(default="Version", description="Nmap scan type: 'SYN', 'Connect', 'Version', 'OS', 'Aggressive'.")
-    timing: str = Field(default="T4", description="Nmap timing template: 'T0' to 'T5'.")
+    timing: str = Field(default="T4", description="Nmap timing template: 'T0' to 'T5'. Default is T4.")
     use_default_scripts: bool = Field(default=False, description="Set True to enable default script scanning (-sC).")
 
 
 class RustScanInput(BaseModel):
     target: str = Field(..., description="The target IP address or hostname to scan.")
-    ports: Optional[str] = Field(default=None, description="Port range (e.g., '1-65535', '80,443', '1-1000'). If None, scans all 65535 ports.")
+    ports: Optional[str] = Field(default=None, description="Port range or alias (e.g. 'top-1000', 'top-100', 'web', '80,443', '1-65535'). If None, scans top standard ports.")
     scan_version: bool = Field(default=False, description="Set True to run deep Nmap version detection on discovered ports. Default is False.")
-    ulimit: Optional[int] = Field(default=5000, description="Max open files limit (default 5000).")
-    batch_size: Optional[int] = Field(default=1000, description="Batch size of ports to scan at once (default 1000).")
+    ulimit: Optional[int] = Field(default=2000, description="Max open files limit (default 2000 for network safety).")
+    batch_size: Optional[int] = Field(default=500, description="Batch size of ports to scan at once (default 500 to prevent firewall rate-limiting).")
 
 
 class MasscanInput(BaseModel):
     target: str = Field(..., description="The target IP address or CIDR range to scan.")
-    ports: Optional[str] = Field(default="1-65535", description="Port range to scan (e.g. '1-65535', '80,443').")
+    ports: Optional[str] = Field(default="top-1000", description="Port range to scan (e.g. 'top-1000', '80,443', '1-65535').")
     rate: int = Field(default=1000, description="Packet transmission rate per second.")
 
 
@@ -92,15 +92,21 @@ def nmap_security_scan(target: str, ports: Optional[str] = None, scan_type: str 
     if use_default_scripts and scan_flag != "-A":
         argv.append("-sC")
     if ports:
-        clean_p = str(ports).strip()
-        if clean_p.lower() in ("all", "1-65535", "full", "*"):
-            argv.append("-p-")
-        elif clean_p.lower() in ("none", "default", "top", "specific ports", "specific"):
-            pass  # Scan top default 1000 ports
+        clean_p = str(ports).strip().lower()
+        if clean_p in ("all", "1-65535", "full", "*"):
+            argv.extend(["-p-", "--min-rate", "1000"])  # Prevent slow timeout when scanning all 65k ports
+        elif clean_p in ("top-100", "top100", "quick", "fast"):
+            argv.extend(["--top-ports", "100"])
+        elif clean_p in ("top-1000", "top1000", "top", "basic", "default", "none", "standard", "specific ports", "specific"):
+            pass  # Scan top default 1000 ports safely
+        elif clean_p in ("web", "http", "https"):
+            argv.extend(["-p", "80,443,8080,8443,8000,8888"])
+        elif clean_p in ("common", "services"):
+            argv.extend(["-p", "21,22,23,25,53,80,110,111,139,143,443,445,993,995,3306,3389,8080"])
         elif re.match(r"^[\d,\-\s]+$", clean_p):
             argv.extend(["-p", clean_p.replace(" ", "")])
         else:
-            # Fallback: omit port flag to use default Nmap port list safely
+            # Fallback: omit port flag to use default Nmap top 1000 ports safely
             pass
     argv.append(host)
     return run_argv("nmap", argv, target=host, timeout=180)
@@ -109,17 +115,23 @@ def nmap_security_scan(target: str, ports: Optional[str] = None, scan_type: str 
 def _format_rustscan_ports(ports: Optional[str]) -> list[str]:
     """Intelligently maps LLM port inputs to the correct RustScan CLI argv arguments."""
     if not ports:
-        return []
+        return ["--top"]  # Real-world safe default: scan top ports
     p = ports.strip().lower()
-    if p in ("all", "1-65535", "full", "65535", "none", "*"):
-        return []  # RustScan default is full 1-65535 scan
-    if p in ("top", "top1000", "top-1000", "top 1000"):
+    if p in ("top", "top1000", "top-1000", "top 1000", "basic", "default", "standard", "none"):
         return ["--top"]
+    if p in ("top-100", "top100", "quick"):
+        return ["-r", "1-100"]
+    if p in ("web", "http", "https"):
+        return ["-p", "80,443,8080,8443,8000,8888"]
+    if p in ("common", "services"):
+        return ["-p", "21,22,23,25,53,80,110,111,139,143,443,445,993,995,3306,3389,8080"]
+    if p in ("all", "1-65535", "full", "65535", "*"):
+        return ["-r", "1-65535"]
     if "-" in p and "," not in p:
         return ["-r", p]
     # Single port or comma-separated list (e.g., '80,443' or '80')
     clean = ",".join(part.strip() for part in p.split(",") if part.strip())
-    return ["-p", clean] if clean else []
+    return ["-p", clean] if clean else ["--top"]
 
 
 @tool(args_schema=RustScanInput)
@@ -130,7 +142,7 @@ def rustscan_port_scan(
     ulimit: Optional[int] = None,
     batch_size: Optional[int] = None,
 ) -> str:
-    """Ultra-fast port scanner (RustScan). Discovers open ports across 1-65535 in seconds."""
+    """Ultra-fast port scanner (RustScan). Discovers open ports safely and quickly."""
     host = clean_target(target)
     argv = ["--no-banner", "-a", host]
     argv.extend(_format_rustscan_ports(ports))
