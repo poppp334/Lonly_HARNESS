@@ -162,9 +162,9 @@ def clean_answer_text(text: str) -> str:
     return cleaned.strip()
 
 
-def is_tool_failure(result: str) -> bool:
+def is_tool_failure(result: Optional[str]) -> bool:
     """True if tool execution result indicates an unambiguous error or failure."""
-    if not result or not result.strip():
+    if not result or not isinstance(result, str) or not result.strip():
         return True
     for pattern in TOOL_FAILURE_PATTERNS:
         if pattern in result:
@@ -172,8 +172,10 @@ def is_tool_failure(result: str) -> bool:
     return False
 
 
-def is_placeholder_answer(text: str) -> bool:
+def is_placeholder_answer(text: Optional[str]) -> bool:
     """True if text appears to copy placeholder/template instructions."""
+    if not text or not isinstance(text, str):
+        return False
     lowered = text.strip().lower()
     for pattern in PLACEHOLDER_PATTERNS:
         if pattern in lowered:
@@ -182,9 +184,11 @@ def is_placeholder_answer(text: str) -> bool:
 
 
 def find_fabricated_tool_mentions(
-    final_answer_text: str, actually_invoked_names: list[str], all_tool_names: list[str]
+    final_answer_text: Optional[str], actually_invoked_names: list[str], all_tool_names: list[str]
 ) -> list[str]:
     """Find tools mentioned in final answer that were never actually executed."""
+    if not final_answer_text or not isinstance(final_answer_text, str):
+        return []
     fabricated = []
     text_lower = final_answer_text.lower()
     for tool_name in all_tool_names:
@@ -201,9 +205,9 @@ def find_fabricated_tool_mentions(
     return fabricated
 
 
-def has_positive_finding(tool_name: str, result: str) -> bool:
+def has_positive_finding(tool_name: str, result: Optional[str]) -> bool:
     """Return True if tool output contains evidence of a positive finding."""
-    if not result:
+    if not result or not isinstance(result, str):
         return False
     if tool_name == "metasploit_auxiliary_scanner":
         return any(line.strip().startswith("[+]") for line in result.splitlines())
@@ -227,11 +231,13 @@ def has_positive_finding(tool_name: str, result: str) -> bool:
 
 
 def check_overclaim(
-    final_answer_text: str,
+    final_answer_text: Optional[str],
     actually_invoked_tools: list[dict],
     overclaim_signatures: Optional[dict[str, Any]] = None,
 ) -> list[str]:
     """Return list of tool_names whose raw results show no real finding, yet the Final Answer claims positive."""
+    if not final_answer_text or not isinstance(final_answer_text, str):
+        return []
     if overclaim_signatures is None:
         overclaim_signatures = {
             "nmap_security_scan": lambda r: "open" in r.lower(),
