@@ -303,6 +303,7 @@ def extract_explicit_targets_from_text(text: str) -> list[str]:
 PLACEHOLDER_DOMAINS = {
     "example.com", "www.example.com", "target", "ip", "http://ip", "https://ip",
     "http://example.com", "https://example.com", "target_host", "target_ip", "http://target",
+    "10.0.0.5", "http://10.0.0.5", "https://10.0.0.5", "10.0.0.0/24", "corp.local", "domain.local",
 }
 
 
