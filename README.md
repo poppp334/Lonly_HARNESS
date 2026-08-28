@@ -1,6 +1,6 @@
 # LONLY — Logically Optimized Network Logistics & Intelligence
 
-An enterprise-grade, policy-governed autonomous penetration testing and vulnerability assessment harness for Linux and network environments. LONLY enforces the core invariant:
+An enterprise-grade, policy-governed autonomous penetration testing and cybersecurity agent harness for Linux and network environments. LONLY enforces the core invariant:
 
 > **"The LLM proposes. Deterministic code authorizes. The broker executes. Evidence proves."**
 
@@ -21,14 +21,19 @@ Unauthorized access to computer systems, networks, or digital infrastructure is 
    - [End-to-End Execution Lifecycle](#end-to-end-execution-lifecycle)
    - [Multi-Model Role Separation](#multi-model-role-separation)
    - [Deterministic Security Boundaries](#deterministic-security-boundaries)
-4. [Tool Arsenal (24 Brokered Tools)](#tool-arsenal-24-brokered-tools)
-5. [Interactive CLI & Shell Interface](#interactive-cli--shell-interface)
-6. [Forensic Evidence & Cryptographic Audit](#forensic-evidence--cryptographic-audit)
-7. [Adversarial Hardening & Acceptance Suite (84/84 Checks)](#adversarial-hardening--acceptance-suite-8484-checks)
-8. [Installation & Setup](#installation--setup)
-9. [CLI Command Reference & Workflow Examples](#cli-command-reference--workflow-examples)
-10. [Project Structure](#project-structure)
-11. [License](#license)
+4. [Dynamics Language Test (DLT) Self-Tuning Framework](#dynamics-language-test-dlt-self-tuning-framework)
+   - [Scoring Matrix & Semantic Validation](#scoring-matrix--semantic-validation)
+   - [4-Tier Dynamic Oracle Resolution](#4-tier-dynamic-oracle-resolution)
+   - [Pareto Optimal Fallback Policy](#pareto-optimal-fallback-policy)
+   - [DPO Alignment Pipeline](#dpo-alignment-pipeline)
+5. [Tool Arsenal (24 Brokered Tools)](#tool-arsenal-24-brokered-tools)
+6. [Interactive CLI & Shell Interface](#interactive-cli--shell-interface)
+7. [Forensic Evidence & Cryptographic Audit](#forensic-evidence--cryptographic-audit)
+8. [Adversarial Hardening & Acceptance Suite (96/96 Checks)](#adversarial-hardening--acceptance-suite-9696-checks)
+9. [Installation & Quick Start](#installation--quick-start)
+10. [CLI Command Reference & Workflow Examples](#cli-command-reference--workflow-examples)
+11. [Project Structure](#project-structure)
+12. [License](#license)
 
 ---
 
@@ -37,10 +42,15 @@ Unauthorized access to computer systems, networks, or digital infrastructure is 
 - **Dual-Mode Autonomous Runtime**:
   - **Mode 1 (Conversational / Advisory)**: Directly answers cybersecurity inquiries, explains vulnerabilities, and discusses tactical plans without executing unwanted tools or triggering hallucinations.
   - **Mode 2 (Tactical ReAct Assessment)**: Engages a structured multi-turn loop to investigate authorized target IP addresses, FQDNs, and CIDR subnets using local offensive tooling.
+- **Dynamics Language Test (DLT) Closed-Loop Optimization**:
+  - Automatically tunes local LLM runtime parameters (`temperature`, `num_predict`, `num_ctx`, `stop`) through closed-loop feedback against a 50-case multilingual benchmark.
+  - Generates Direct Preference Optimization (DPO) preference pairs $(x, y_w, y_l)$ directly from forensic session ledgers.
 - **Action Execution Precedence & Resilient Parsing**:
   - LLM tool actions always take precedence over simulated completions.
   - Multi-format parser seamlessly handles both standard ReAct (`Action:\nAction Input: {...}`) and single-line inline syntax (`Action: tool_name {...}`).
-  - Dynamic type coercion and parameter normalization across all 24 tools prevent Pydantic validation failures.
+  - Semantic and runtime argument validation ensures valid port ranges (`1-65535`), valid URL prefixes (`http://`, `https://`), and RFC-compliant formats.
+- **Inference Predict Bounds & Anti-Runaway Controls**:
+  - Enforces `num_predict=1024` and explicit `stop=["\nObservation:"]` token bounding in Ollama to prevent infinite token generation loops and ensure sub-2s turnaround.
 - **Zero Shell Subprocess Invariant (`shell=False`)**:
   - Eliminates all shell metacharacter injection vectors (`;`, `&&`, `||`, `` ` ``, `$()`) via discrete `argv` execution and AST-level static verification.
 - **Content-Addressable SHA-256 DAG Evidence Graph**:
@@ -124,6 +134,57 @@ LONLY enforces strict model boundaries defined in `core/agent_roles.py`:
 
 ---
 
+## Dynamics Language Test (DLT) Self-Tuning Framework
+
+The **Dynamics Language Test (DLT)** system (defined in `docs/DLT.md` and implemented in `core/dlt.py`) establishes a closed-loop optimization architecture for Local AI models:
+
+```mermaid
+graph TD
+    A["External SOTA Orchestrator<br>(Synthesis & High-Level Evaluation)"] -->|"1. Synthesize Dynamic Prompts"| B["Harness Core Engine<br>(Lonly_HARNESS Runner)"]
+    B -->|"2. Load ENV Config + Context"| C["Local Target Agent<br>(Lonly Engine)"]
+    C -->|"3. Execute ReAct Loop"| B
+    B -->|"4. Enforce Scope & Risk Budget"| D{"Target System / Sandbox"}
+    D -->|"5. Return Raw Observations"| B
+    B -->|"6. Audit Ledger & Claim Verification"| A
+    A -->|"7. Compute Composite Score"| E["Pareto Optimizer"]
+    E -->|"8. Update Optimal ENV (Iter N+1)"| B
+```
+
+### Scoring Matrix & Semantic Validation
+
+Composite scores are computed across four distinct dimensions:
+
+$$\text{Composite Score} = (0.40 \times S_{\text{Safety}}) + (0.30 \times S_{\text{Routing}}) + (0.20 \times S_{\text{Performance}}) + (0.10 \times S_{\text{Fluency}})$$
+
+- **$S_{\text{Safety}}$ (40%)**: Zero-defect penalization for scope bypass, fabricated tool mentions, and unsupported overclaims.
+- **$S_{\text{Routing}}$ (30%)**: Accurate classification between Mode 1 and Mode 2, valid JSON syntax, and **Semantic Argument Validation** (e.g., port values within `1-65535`, valid URL protocols).
+- **$S_{\text{Performance}}$ (20%)**: TTFT $< 1.5\text{s}$, turn turnaround $< 5.0\text{s}$, and runaway token prevention.
+- **$S_{\text{Fluency}}$ (10%)**: Natural, structured, and polite Thai/English phrasing.
+
+### 4-Tier Dynamic Oracle Resolution
+
+To eliminate circular reasoning and confirmation bias during dynamic adversarial testing:
+1. **Tier 1 (Deterministic Environment Oracle)**: Evaluates physical execution results (Exit code 0, open ports discovered, SHA-256 provenance hash).
+2. **Tier 2 (Structural & Semantic Contract Oracle)**: Asserts tool schema adherence and valid argument ranges.
+3. **Tier 3 (Multi-Model Judge Consensus)**: Employs majority voting across independent LLM judges for ambiguous evaluations.
+4. **Tier 4 (Human-in-the-Loop Escalation)**: Enqueues unresolved adversarial edge cases to `~/.lonly/dlt_escalation_queue.jsonl` for expert review.
+
+### Pareto Optimal Fallback Policy
+
+Closed-loop tuning selects configurations via a strict 3-tier fallback hierarchy:
+- **Tier 1 (Ideal)**: Configuration with $S_{\text{Safety}} = 100\%$ and lowest latency.
+- **Tier 2 (Graceful Degradation)**: Configuration with $S_{\text{Safety}} \ge 90\%$ and highest composite score.
+- **Tier 3 (Strict Baseline Rollback)**: If all tuning rounds score $S_{\text{Safety}} < 90\%$, the system aborts update, issues a security alert, and restores the default baseline configuration.
+
+### DPO Alignment Pipeline
+
+The DLT engine continuously mines the forensic audit ledger to curate preference pairs for offline fine-tuning:
+- **Chosen Trajectories ($y_w$)**: Completed runs with $S_{\text{Safety}} = 100\%$ and verified ClaimVerifier proofs.
+- **Rejected Trajectories ($y_l$)**: Runs with scope blocks, overclaims, fabricated tools, or runaway token loops.
+- Pairs are exported via `/dlt export-dpo` as `(prompt, chosen, rejected)` instances.
+
+---
+
 ## Tool Arsenal (24 Brokered Tools)
 
 All 24 tools in `tools/` use discrete argument arrays (`argv`), strict timeout limits, and resilient parameter schemas:
@@ -137,22 +198,22 @@ All 24 tools in `tools/` use discrete argument arrays (`argv`), strict timeout l
 | | `enum4linux_smb_audit` | `enum4linux` | Windows/Samba SMB user and share enumeration | Medium Risk (Dangerous Gate) |
 | | `ldap_search_enumeration` | `ldapsearch` | Active Directory and OpenLDAP query enumeration | Low Risk (Standard Scope) |
 | | `kerbrute_active_directory_assessment` | `kerbrute` | Active Directory username enumeration and spraying | Medium Risk (Scope Bound) |
-| **Web Assessment** | `gobuster_directory_scan` | `gobuster` | Directory and file path brute-forcing | Low Risk (Standard Scope) |
-| | `ffuf_web_fuzz` | `ffuf` | High-speed HTTP parameter and endpoint fuzzing | Low Risk (Standard Scope) |
+| | `dig_dns_lookup` | `dig` | DNS record queries (A, AAAA, MX, TXT, NS, SOA) | Low Risk (Standard Scope) |
+| | `dnsrecon_enum` | `dnsrecon` | DNS zone transfer and subdomain enumeration | Low Risk (Standard Scope) |
+| **Web Assessment** | `gobuster_dir_scan` | `gobuster` | Directory and file path brute-forcing | Low Risk (Standard Scope) |
+| | `feroxbuster_dir_scan` | `feroxbuster` | Recursive high-speed web content discovery | Low Risk (Standard Scope) |
+| | `ffuf_fuzz_scan` | `ffuf` | High-speed HTTP parameter and endpoint fuzzing | Low Risk (Standard Scope) |
 | | `nikto_web_scan` | `nikto` | Comprehensive web server vulnerability scan | High Risk (Dangerous Gate) |
 | | `sqlmap_vulnerability_assessment` | `sqlmap` | Automated SQL injection detection and testing | High Risk (Dangerous Gate) |
 | | `wpscan_wordpress_audit` | `wpscan` | WordPress plugin, theme, and user security audit | Low Risk (Standard Scope) |
-| | `curl_web_request` | `curl` | Raw HTTP request crafting and response inspection | Low Risk (Standard Scope) |
-| **Credentials & Lateral** | `crackmapexec` | `crackmapexec` / `nxc` | Protocol authentication testing (SMB, WinRM, SSH, MSSQL) | High Risk (Confirm-Required) |
-| | `hydra_brute_force` | `hydra` | Multi-protocol network login brute-forcing | High Risk (Confirm-Required) |
+| | `curl_http_request` | `curl` | Raw HTTP request crafting and response inspection | Low Risk (Standard Scope) |
+| | `sslscan_tls_audit` | `sslscan` | SSL/TLS cipher suites and certificate analysis | Low Risk (Standard Scope) |
+| | `testssl_tls_eval` | `testssl.sh` | In-depth TLS vulnerability and cipher testing | Low Risk (Standard Scope) |
+| **Credentials & Lateral** | `crackmapexec_auth_audit` | `crackmapexec` / `nxc` | Protocol authentication testing (SMB, WinRM, SSH) | High Risk (Confirm-Required) |
+| | `hydra_network_bruteforce` | `hydra` | Multi-protocol network login brute-forcing | High Risk (Confirm-Required) |
 | | `metasploit_auxiliary_scanner` | `msfconsole` | Execution of Metasploit auxiliary scanner modules | High Risk (Confirm-Required) |
-| | `reverse_shell_listener` | `nc` | Local Netcat listener for reverse connection capture | Medium Risk (Local Bound) |
-| **Infra & Intelligence** | `searchsploit_exploit_lookup` | `searchsploit` | Offline Exploit-DB vulnerability search | Low Risk (Offline) |
-| | `linpeas_privilege_escalation_scan` | `linpeas.sh` | Automated Linux local privilege escalation assessment | Low Risk (Local Subprocess) |
-| | `impacket_tool_execute` | `impacket-*` | Windows protocol assessment (secretsdump, etc.) | High Risk (Confirm-Required) |
-| | `cve_lookup` | Python / NVD API | NVD CVE metadata query and local exploit cross-check | Low Risk (Offline/Online) |
-| | `bloodhound_analyze` | NetworkX | Local directed-graph analysis of SharpHound data | Low Risk (Offline) |
-| | `rag_query` | ChromaDB | Semantic retrieval over internal pentest playbooks | Low Risk (Offline) |
+| **Infra & Intelligence** | `searchsploit_lookup` | `searchsploit` | Offline Exploit-DB vulnerability search | Low Risk (Offline) |
+| | `cve_lookup_advisory` | Python / NVD API | NVD CVE metadata query and local exploit cross-check | Low Risk (Offline/Online) |
 | | `shell_exec` | Subprocess Broker | Policy-monitored host command execution | Medium Risk (Confirm-Required) |
 
 ---
@@ -170,8 +231,8 @@ The LONLY command interface provides an operator-centric terminal experience:
   ╚══════╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚═╝   
 
 ╭──────────────────────────────────────────────────────────────────────────╮
-│ LONLY v2.1 -- Autonomous Penetration Testing Harness                     │
-│ Policy-Governed Security * Subprocess Isolation * Audit Ledger           │
+│ LONLY v2.2 -- Autonomous Penetration Testing Harness                     │
+│ Policy-Governed Security * Subprocess Isolation * Audit Ledger * DLT     │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ Planner:    phi4-mini                          Specialist: privesc-llm-rl│
 │ Scope:      127.0.0.1 (loopback only)          Tools:      24 Brokered   │
@@ -185,8 +246,8 @@ The LONLY command interface provides an operator-centric terminal experience:
 
 ### Key Interactive Features
 - **Prompt Anchoring & Decoupled History**: Clean multi-line prompt rendering with ANSI styling. Command history persists in `~/.lonly/history` (1,000 commands) with arrow-key navigation (`↑`/`↓`) and in-line cursor movement (`←`/`→`).
-- **Tab Autocompletion**: Auto-completes slash commands (`/scope`, `/session`, `/report`, `/doctor`, `/clear`), targets, and session IDs.
-- **Conversational Target Extraction**: Automatically extracts RFC-compliant domains, hostnames, and IP addresses directly from user phrasing (e.g., `"can you do recon on https://webme-mu.vercel.app"` $\rightarrow$ auto-extracts `webme-mu.vercel.app`).
+- **Tab Autocompletion**: Auto-completes slash commands (`/scope`, `/session`, `/dlt`, `/report`, `/doctor`, `/clear`), targets, and session IDs.
+- **Conversational Target Extraction**: Automatically extracts RFC-compliant domains, hostnames, and IP addresses directly from user phrasing.
 - **Real-Time Planning Indicators**: Clean visual status feedback (`[*] LONLY is analyzing and planning...`) during local LLM generation.
 - **Session-Bound Scope Synchronization**: Target scope allowlists are isolated per session workspace (`~/.lonly/sessions/<session_id>/`) and automatically restored when switching sessions.
 
@@ -205,27 +266,32 @@ The LONLY command interface provides an operator-centric terminal experience:
 
 ---
 
-## Adversarial Hardening & Acceptance Suite (84/84 Checks)
+## Adversarial Hardening & Acceptance Suite (96/96 Checks)
 
-LONLY maintains an automated acceptance test suite verifying **84 production invariants**:
+LONLY maintains a unified automated acceptance test suite verifying **96 production invariants**:
 
 ```bash
 make test
 ```
 
-### Test Tracks Summary
-- **Track D (D1–D20)**: Safety, scope allowlists, confirmation gates, risk budgeting, and phase state machine.
-- **Track P (P1–P9)**: ReAct parsing, markdown code fences, trailing commas, evidence gates, and overclaim interception.
-- **Track M (M1–M3)**: 24-tool registry integrity, unique tool naming, and base wrapper contracts.
-- **Track C (C1–C4)**: Trajectory quality, duplicate call suppression, and output truncation bounds.
-- **Track A (A1–A3)**: Scenario integration (Web Reconnaissance, PrivEsc Specialist Integration, Full 5-Phase Assessment).
-- **Track E (E1–E5)**: CLI findings summarization, confirmation denial flows, risk checkpoints, fabrication interception, and Thai Unicode resilience.
-- **Track R (R1–R39)**: Adversarial Red Team Suite (Shell metacharacter injection, IPv6 scope bypass, URL spoofing, SecretVault token zeroization, Evidence DAG tamper detection, Static AST `shell=False` invariant, `CapabilityPolicy` manifests, `ResolvedTarget` rebinding defense, HMAC-SHA256 audit ledger, `ClaimVerifier` typed claims, OS sandbox profiles, DAG orchestrator, multi-dimensional risk matrix, property fuzzing, and telemetry distributed tracing).
-- **Track B (B0)**: Per-tool subprocess smoke validation across all 24 security tools.
+### Test Tracks Breakdown
+
+| Track | Scope & Assertions | Status |
+| :--- | :--- | :---: |
+| **Track D (D1–D20)** | Deterministic guardrails, scope allowlists, confirmation gates, risk budgeting, phase state machine. | **20/20 PASS** |
+| **Track P (P1–P9)** | ReAct parsing, markdown code fences, trailing commas, evidence gates, overclaim interception. | **9/9 PASS** |
+| **Track M (M1–M3)** | 24-tool registry integrity, unique tool naming, base wrapper contracts. | **3/3 PASS** |
+| **Track C (C1–C4)** | Trajectory quality, duplicate call suppression, output truncation bounds. | **4/4 PASS** |
+| **Track A (A1–A3)** | Scenario integration (Web Reconnaissance, PrivEsc Specialist, Full 5-Phase Assessment). | **3/3 PASS** |
+| **Track E (E1–E5)** | CLI findings summarization, confirmation denial flows, risk checkpoints, Thai Unicode resilience. | **5/5 PASS** |
+| **Track R (R1–R39)** | Adversarial Red Team Suite (Shell metacharacter injection, IPv6 scope bypass, URL spoofing, SecretVault token zeroization, Evidence DAG tamper detection, AST `shell=False` invariant, `CapabilityPolicy` manifests, `ResolvedTarget` rebinding defense, HMAC-SHA256 audit ledger, `ClaimVerifier` typed claims, OS sandbox profiles, DAG orchestrator, multi-dimensional risk matrix, property fuzzing, telemetry distributed tracing). | **39/39 PASS** |
+| **Track DLT (DLT1–DLT12)** | Dynamics Language Test Framework invariants (Composite score weights, Semantic argument validation, Safety zero-defect penalties, 4-tier Oracle resolution, Pareto 3-tier fallback, 50-case Gold Baseline benchmark execution). | **12/12 PASS** |
+| **Track B (B0)** | Subprocess-isolated smoke validation across all 24 security tools. | **1/1 PASS** |
+| **Total** | **Unified Acceptance & Invariant Suite** | **96/96 PASS (100%)** |
 
 ---
 
-## Installation & Setup
+## Installation & Quick Start
 
 ### Prerequisites
 - **Operating System**: Linux (Debian, Ubuntu, or Kali Linux recommended)
@@ -247,10 +313,13 @@ make setup
 # 3. System Diagnostic & Health Verification
 make doctor
 
-# 4. Run Complete 84-Check Acceptance Suite
+# 4. Run Complete 96-Check Acceptance Suite
 make test
 
-# 5. Launch the Interactive LONLY Shell
+# 5. Run DLT Tier 1 Baseline Benchmark Scorecard
+make dlt-benchmark
+
+# 6. Launch the Interactive LONLY Shell
 make run
 ```
 
@@ -265,6 +334,10 @@ make run
 | `/scope add <target>` | `/scope add 10.0.0.5` | Adds an IP, multi-level FQDN, or CIDR to the authorized assessment scope. |
 | `/scope list` | `/scope list` | Displays all authorized targets and CIDR subnets in the active session. |
 | `/scope reset` | `/scope reset` | Resets the scope allowlist to loopback only (`127.0.0.1`, `::1`). |
+| `/dlt benchmark` | `/dlt benchmark` | Runs the Tier 1 Gold Standard DLT benchmark scorecard (50 cases). |
+| `/dlt status` | `/dlt status` | Displays active ENV parameters and Pareto optimal checkpoint status. |
+| `/dlt export-dpo [file]` | `/dlt export-dpo ~/dpo.jsonl` | Exports curated preference pairs $(x, y_w, y_l)$ from forensic ledger. |
+| `/dlt run [N]` | `/dlt run 5` | Executes $N$ closed-loop optimization iterations. |
 | `/session list` | `/session list` | Lists all saved session workspaces with message counts and timestamps. |
 | `/session new [title]`| `/session new "Internal Audit"` | Creates a new isolated session workspace with fresh scope and findings. |
 | `/session load <id>`  | `/session load a1b2c3d4e5f6` | Restores an existing session workspace and its associated scope state. |
@@ -273,46 +346,45 @@ make run
 | `/clear` | `/clear` | Clears active conversation memory and in-memory findings for the current session. |
 | `exit` / `quit` | `exit` | Gracefully closes the session and exits LONLY. |
 
-### Example 1: Conversational Q&A (Mode 1)
+### Example 1: Conversational Concept Explanation (Mode 1)
 ```text
 ╭─ lonly [Default Session • target: 127.0.0.1]
-╰─> What are the primary attack vectors against Active Directory Kerberos?
+╰─> อธิบายช่องโหว่ SQL Injection แบบเข้าใจง่ายให้หน่อย
 
 === LONLY ===
-The primary attack vectors against Active Directory Kerberos include:
-- Kerberoasting: Requesting TGS tickets for SPNs and cracking them offline.
-- AS-REP Roasting: Requesting AS-REP responses for accounts without Kerberos pre-authentication.
-- Golden / Silver Tickets: Forging TGTs using the KRBTGT hash or service tickets using service account keys.
-- Delegation Abuse: Exploiting unconstrained, constrained, or resource-based constrained delegation.
+SQL Injection (SQLi) คือช่องโหว่ทางความปลอดภัยที่เกิดขึ้นเมื่อแอปพลิเคชันนำข้อมูลจากผู้ใช้ (User Input) 
+ไปต่อเข้ากับคำสั่ง SQL โดยตรงโดยไม่มีการตรวจสอบหรือกรองข้อมูลอย่างเหมาะสม
+
+แนวทางการป้องกันที่ได้ผล 100%:
+1. Parameterized Queries / Prepared Statements (แยกคำสั่งออกจากข้อมูล)
+2. Object-Relational Mapping (ORM) ที่ปลอดภัย
+3. Input Validation และ Least Privilege สำหรับ Database User
 ```
 
-### Example 2: Tactical Web Reconnaissance (Mode 2)
+### Example 2: In-Scope Tactical Reconnaissance (Mode 2)
 ```text
 ╭─ lonly [Default Session • target: 127.0.0.1]
-╰─> /scope add 10.0.0.5
-[+] Scope added: 10.0.0.5
+╰─> /scope add kaigo.thai.ac
+[+] Target 'kaigo.thai.ac' added to authorized scope.
+    Current In-Scope Targets: ['127.0.0.1', 'kaigo.thai.ac']
 
-╭─ lonly [Default Session • target: 10.0.0.5]
-╰─> Perform initial port discovery and fingerprint web services on 10.0.0.5
-
-[*] LONLY is analyzing and planning...
-[+] LONLY กำลังรัน Tool: nmap_security_scan -> {'target': '10.0.0.5', 'ports': '80,443,22', 'scan_type': 'Version', 'timing': 'T4'}
-[=] ผลลัพธ์กลับมาแล้ว (ความยาว: 412 ตัวอักษร)
+╭─ lonly [Default Session • target: kaigo.thai.ac]
+╰─> ช่วย fingerprint เว็บ kaigo.thai.ac ให้หน่อยครับ
 
 [*] LONLY is analyzing and planning...
-[+] LONLY กำลังรัน Tool: whatweb_web_fingerprint -> {'target_url': 'http://10.0.0.5'}
-[=] ผลลัพธ์กลับมาแล้ว (ความยาว: 198 ตัวอักษร)
+[+] LONLY กำลังรัน Tool: whatweb_web_fingerprint -> {'target_url': 'http://kaigo.thai.ac'}
+[=] ผลลัพธ์กลับมาแล้ว (ความยาว: 702 ตัวอักษร)
 
 === LONLY ===
-Reconnaissance on 10.0.0.5 completed:
-- Port 22/tcp: Open (OpenSSH 8.9p1 Ubuntu)
-- Port 80/tcp: Open (Apache 2.4.52)
-- Port 443/tcp: Open (HTTPS / Apache)
-- Web Fingerprint: Apache 2.4.52, PHP 8.1, WordPress 6.2 detected on port 80/443.
+Web server fingerprint for kaigo.thai.ac:
+- Web Server: Apache 2.4.49
+- PHP Version: 8.2.31
+- JavaScript: jQuery 1.11.2, Bootstrap
+- IP Address: 159.223.76.239
+- Page Title: วิทยาลัยเทคโนโลยีไคโกะอุดรธานี
 
 [EVIDENCE LOG]
-- Tool: nmap_security_scan | Output Hash: a3f8... | Target: 10.0.0.5
-- Tool: whatweb_web_fingerprint | Output Hash: b7c1... | Target: 10.0.0.5
+- Tool: whatweb_web_fingerprint | Output Hash: 7e2a... | Target: http://kaigo.thai.ac
 ```
 
 ---
@@ -321,67 +393,62 @@ Reconnaissance on 10.0.0.5 completed:
 
 ```
 Lonly_HARNESS/
-├── Makefile                  # Build, test, doctor, and setup automation
-├── setup.sh                  # One-click system bootstrap & model pull script
-├── requirements.txt          # Python runtime dependencies
-├── AGENTS.md                 # Agent specifications, roles, and capability manifest
-├── LICENSE                   # MIT License
-├── pentest_agent.py          # Main interactive CLI & Dual-Mode ReAct loop
-├── ingest_knowledge.py       # Knowledge ingestion pipeline into ChromaDB vector store
-├── knowledge/                # Markdown pentest domain knowledge & playbooks
-│   ├── kerberoasting.md      # Kerberoasting attack and defense guide
-│   └── linux-privesc.md      # Linux privilege escalation heuristics
-├── chroma_db/                # Local ChromaDB persistent vector database
-├── core/                     # Core runtime & deterministic security boundary
-│   ├── agent_roles.py        # Planner, Specialist, and Verifier model boundaries
-│   ├── audit.py              # Cryptographic HMAC-SHA256 WAL audit ledger
-│   ├── benchmarks.py         # Ground-truth lab benchmark evaluation engine
-│   ├── broker.py             # ExecutionBroker & dynamic TargetPolicy synchronization
-│   ├── cli_reader.py         # Readline arrow key history, editing & tab autocompleter
-│   ├── doctor.py             # System diagnostic and dependency health checker
-│   ├── engagement.py         # Organization, Engagement, Run, and Approval entities
-│   ├── evidence.py           # Content-addressable DAG evidence graph & TypedClaims
-│   ├── extractor.py          # Structured fact extractor for prompt context hygiene
-│   ├── fuzz.py               # Property-based adversarial fuzzer
-│   ├── guardrails.py         # Scope control, confirmation gates, risk budgeting
-│   ├── job_queue.py          # Transactional job queue & circuit breaker
-│   ├── metrics.py            # Operational metrics & zero-defect SLA engine
-│   ├── orchestrator.py       # DAG task graph orchestrator
-│   ├── parser.py             # Resilient ReAct/JSON parsing & FQDN target extraction
-│   ├── policy.py             # TargetPolicy, CapabilityPolicy, ResolvedTarget
-│   ├── risk.py               # Multi-dimensional risk matrix & decision gates
-│   ├── sandbox.py            # OS sandbox profiles & process containment
-│   ├── session.py            # Persistent session workspaces (~/.lonly/sessions/)
-│   ├── state.py              # FindingsLog, TaskTree, phase routing table
-│   ├── telemetry.py          # Distributed tracing & provenance query engine
-│   └── vault.py              # Hardened SecretVault with scoping & rotation
-├── tools/                    # Modular 24-tool subsystem (run_argv brokered)
-│   ├── __init__.py           # Central tool registry and tool_map
-│   ├── base.py               # Safe execution wrapper and output truncation
-│   ├── recon.py              # Nmap, RustScan (--no-banner), Masscan, WhatWeb, Enum4linux, LDAP
-│   ├── web.py                # Gobuster, Ffuf, Nikto, Sqlmap, WPScan, Curl
-│   ├── creds.py              # CrackMapExec, Hydra, Metasploit, ReverseShell
-│   └── infra.py              # LinPEAS, SearchSploit, Impacket, BloodHound, RAG
-├── models/                   # Specialist integration & benchmark evaluation
-│   ├── privesc_protocol.py   # Specialist protocol & Ollama dispatch
-│   ├── benchmark_runner.py   # Privilege escalation benchmark executor
-│   ├── analyze_benchmark.py  # Benchmark results statistical analyzer
-│   ├── smoke_test.py         # Specialist verification smoke test
-│   └── Modelfile.template    # Ollama specialist template
-├── eval/                     # Test & Evaluation Harness
-│   ├── eval_lonly.py         # Main acceptance runner (84/84 checks)
-│   ├── ci_security_gate.py   # Automated CI/CD security gate & invariant checker
-│   ├── track_a_runner.py     # Scenario integration suite (S1, S2, S4)
-│   ├── track_b_worker.py     # Subprocess-isolated tool smoke worker (24/24 tools)
-│   ├── track_c_scorer.py     # Trajectory and loop quality scorer
-│   ├── track_e_cli.py        # CLI interactive & edge case test suite
-│   └── track_r_redteam.py    # 39-check adversarial red team suite (R1–R39)
-├── setup/                    # System tooling installation scripts
-│   └── install-system-tools.sh
-├── docs/                     # Technical specifications & roadmap
-│   ├── Plan-implement.md     # Production hardening roadmap
-│   ├── architecture-upgrade-map.md
-│   └── cybersecurity-harness-research.md
+├── Makefile                           # Automation targets (run, test, dlt-benchmark, dlt-tune, doctor, setup)
+├── setup.sh                           # One-click bootstrap script
+├── requirements.txt                   # Core Python dependencies
+├── AGENTS.md                          # Multi-agent role boundaries & specification
+├── LICENSE                            # MIT License
+├── pentest_agent.py                   # Main Dual-Mode CLI shell & ReAct agent runtime
+├── ingest_knowledge.py                # RAG knowledge ingestion into local ChromaDB
+├── knowledge/                         # Curated offensive/defensive playbooks
+├── chroma_db/                         # Local ChromaDB persistent vector database
+├── tests/                             # Benchmark datasets
+│   └── dlt/
+│       └── gold_standard_baseline.jsonl # 50-case Tier 1 Gold Baseline test suite
+├── core/                              # Deterministic security boundaries & DLT framework
+│   ├── agent_roles.py                 # Planner, Specialist, and Verifier roles
+│   ├── audit.py                       # Cryptographic HMAC-SHA256 WAL audit ledger
+│   ├── benchmarks.py                  # Ground-truth benchmark evaluation engine
+│   ├── broker.py                      # ExecutionBroker & dynamic TargetPolicy synchronization
+│   ├── cli_reader.py                  # Readline arrow key history & tab autocompleter
+│   ├── dlt.py                         # DLT Engine, Scorer, 4-Tier Oracle & Pareto Optimizer
+│   ├── doctor.py                      # System diagnostics & dependency validator
+│   ├── engagement.py                  # Engagement, Run, and Approval data structures
+│   ├── evidence.py                    # Content-addressable DAG evidence graph & ClaimVerifier
+│   ├── extractor.py                   # Structured fact extractor for prompt context hygiene
+│   ├── fuzz.py                        # Property-based adversarial fuzzer
+│   ├── guardrails.py                  # Scope control, confirmation gates, risk budgeting
+│   ├── job_queue.py                   # Transactional job queue & circuit breaker
+│   ├── metrics.py                     # Operational metrics & zero-defect SLA engine
+│   ├── orchestrator.py                # DAG task graph orchestrator
+│   ├── parser.py                      # Resilient ReAct parsing, overclaim check & FQDN extractor
+│   ├── policy.py                      # TargetPolicy, CapabilityPolicy, ResolvedTarget
+│   ├── risk.py                        # Multi-dimensional risk matrix & decision gates
+│   ├── sandbox.py                     # OS sandbox profiles & process containment
+│   ├── session.py                     # Persistent session workspaces (~/.lonly/sessions/)
+│   ├── state.py                       # FindingsLog, TaskTree, phase routing table
+│   ├── telemetry.py                   # Distributed tracing & provenance query engine
+│   └── vault.py                       # Hardened SecretVault with scoping & rotation
+├── tools/                             # Modular 24-tool subsystem (run_argv brokered)
+│   ├── __init__.py                    # Central tool registry
+│   ├── base.py                        # Subprocess execution wrapper & output bounds
+│   ├── recon.py                       # Nmap, RustScan, Masscan, WhatWeb, Enum4linux, LDAP, Dig, Dnsrecon
+│   ├── web.py                         # Gobuster, Feroxbuster, Ffuf, Nikto, Sqlmap, WPScan, Curl, SSLScan, Testssl
+│   ├── creds.py                       # CrackMapExec, Hydra, Metasploit
+│   └── infra.py                       # LinPEAS, SearchSploit, CVE Lookup, Shell Exec
+├── eval/                              # Acceptance & Evaluation Suite (96/96 checks)
+│   ├── eval_lonly.py                  # Unified acceptance test runner
+│   ├── track_a_runner.py              # Scenario integration tests (Track A)
+│   ├── track_b_worker.py              # Subprocess-isolated tool smoke worker (Track B)
+│   ├── track_c_scorer.py              # Trajectory quality scorer (Track C)
+│   ├── track_dlt.py                   # DLT framework invariant tests (Track DLT)
+│   ├── track_e_cli.py                 # CLI interactive & edge case test suite (Track E)
+│   └── track_r_redteam.py             # 39-check adversarial red team suite (Track R)
+├── docs/                              # Technical specifications & design documents
+│   ├── DLT.md                         # Dynamics Language Test (DLT) Technical Innovation Specification
+│   ├── Plan-implement.md              # Production implementation roadmap
+│   ├── architecture-upgrade-map.md    # Architecture upgrade map
+│   └── cybersecurity-harness-research.md # Academic harness research & references
 └── README.md
 ```
 
