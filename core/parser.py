@@ -107,6 +107,7 @@ def parse_react_response(text: str) -> tuple[Optional[str], Optional[dict[str, A
     if not text:
         return None, None
 
+    # Case 1: Standard ReAct with separate Action Input: line
     action_match = re.search(r"Action:\s*([a-zA-Z0-9_-]+)", text)
     if not action_match:
         return None, None
@@ -120,6 +121,22 @@ def parse_react_response(text: str) -> tuple[Optional[str], Optional[dict[str, A
         tool_args = extract_json_object(raw_input)
         if tool_args is not None:
             return tool_name, tool_args
+
+    # Case 2: Inline Action + JSON (e.g. Action: whatweb_web_fingerprint {"target_url": "..."})
+    action_line_match = re.search(r"Action:\s*([a-zA-Z0-9_-]+)\s*(\{.*?\})", text)
+    if action_line_match:
+        inline_tool = action_line_match.group(1).strip()
+        inline_json = extract_json_object(action_line_match.group(2))
+        if inline_json is not None:
+            return inline_tool, inline_json
+
+    # Case 3: Action followed by JSON block or code fence without explicit 'Action Input:' label
+    trailing_text = text[action_match.end():]
+    # Stop before next Action/Observation/Final Answer if present
+    next_section = re.split(r"\n\s*(?:Action:|Observation:|Final Answer:)", trailing_text)[0]
+    json_candidate = extract_json_object(next_section)
+    if json_candidate is not None:
+        return tool_name, json_candidate
 
     return None, None
 

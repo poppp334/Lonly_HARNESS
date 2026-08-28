@@ -16,8 +16,8 @@ from tools.base import run_argv, clean_target, ensure_url
 class NmapScanInput(BaseModel):
     target: str = Field(..., description="The target IP, hostname, or CIDR subnet to scan.")
     ports: Optional[str] = Field(default=None, description="Specific ports to scan (e.g. '80,443', '1-1000'). If None, scans top 1000 ports.")
-    scan_type: Literal["SYN", "Connect", "Version", "OS", "Aggressive"] = Field(default="Version", description="Nmap scan type.")
-    timing: Literal["T0", "T1", "T2", "T3", "T4", "T5"] = Field(default="T4", description="Nmap timing template.")
+    scan_type: str = Field(default="Version", description="Nmap scan type: 'SYN', 'Connect', 'Version', 'OS', 'Aggressive'.")
+    timing: str = Field(default="T4", description="Nmap timing template: 'T0' to 'T5'.")
     use_default_scripts: bool = Field(default=False, description="Set True to enable default script scanning (-sC).")
 
 
@@ -58,17 +58,48 @@ class KerbruteInput(BaseModel):
 def nmap_security_scan(target: str, ports: Optional[str] = None, scan_type: str = "Version", timing: str = "T4", use_default_scripts: bool = False) -> str:
     """Use this tool to perform network exploration and vulnerability/port scanning using Nmap."""
     host = clean_target(target)
-    argv = [f"-{timing}"]
-    scan_type_map = {"SYN": "-sS", "Connect": "-sT", "Version": "-sV", "OS": "-O", "Aggressive": "-A"}
-    argv.append(scan_type_map.get(scan_type, "-sV"))
-    if use_default_scripts and scan_type != "Aggressive":
+    
+    # Resilient timing normalization
+    t_clean = timing.strip().upper() if isinstance(timing, str) and timing.strip() else "T4"
+    if t_clean in ("T0", "T1", "T2", "T3", "T4", "T5"):
+        timing_flag = f"-{t_clean}"
+    elif t_clean in ("0", "1", "2", "3", "4", "5"):
+        timing_flag = f"-T{t_clean}"
+    else:
+        timing_flag = "-T4"
+
+    # Resilient scan type normalization
+    st_clean = scan_type.strip().lower() if isinstance(scan_type, str) and scan_type.strip() else "version"
+    scan_type_map = {
+        "syn": "-sS",
+        "ss": "-sS",
+        "connect": "-sT",
+        "st": "-sT",
+        "tcp": "-sT",
+        "version": "-sV",
+        "service": "-sV",
+        "sv": "-sV",
+        "os": "-O",
+        "o": "-O",
+        "aggressive": "-A",
+        "a": "-A",
+    }
+    scan_flag = scan_type_map.get(st_clean, "-sV")
+
+    argv = [timing_flag, scan_flag]
+    if use_default_scripts and scan_flag != "-A":
         argv.append("-sC")
     if ports:
-        clean_p = ports.strip()
+        clean_p = str(ports).strip()
         if clean_p.lower() in ("all", "1-65535", "full", "*"):
             argv.append("-p-")
+        elif clean_p.lower() in ("none", "default", "top", "specific ports", "specific"):
+            pass  # Scan top default 1000 ports
+        elif re.match(r"^[\d,\-\s]+$", clean_p):
+            argv.extend(["-p", clean_p.replace(" ", "")])
         else:
-            argv.extend(["-p", clean_p])
+            # Fallback: omit port flag to use default Nmap port list safely
+            pass
     argv.append(host)
     return run_argv("nmap", argv, target=host, timeout=180)
 
