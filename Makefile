@@ -38,7 +38,7 @@ setup:
 	@echo "[+] Checking Python environment..."
 	@$(PYTHON) -m pip install -r requirements.txt
 	@echo "[+] Checking Ollama generalist model..."
-	@ollama pull gemma3:4b || true
+	@ollama pull phi4-mini || true
 	@echo "[+] Ingesting RAG knowledge base..."
 	@$(PYTHON) ingest_knowledge.py
 	@echo "[+] Running LONLY Doctor diagnostic..."

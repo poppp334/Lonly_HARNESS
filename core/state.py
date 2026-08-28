@@ -26,13 +26,17 @@ from typing import Any, Optional
 # Canonical pentest phase order (config, not code — reorder to taste)
 DEFAULT_PHASES = ("recon", "enumerate", "vuln_check", "privesc", "report")
 
+# Default model identifiers (configurable via env vars)
+DEFAULT_GENERALIST_MODEL = os.environ.get("LONLY_MODEL", "phi4-mini")
+DEFAULT_SPECIALIST_MODEL = os.environ.get("LONLY_SPECIALIST_MODEL", "privesc-llm-rl:4b")
+
 # Phase -> model routing table (N3). Data, not code: swap models by editing this.
 PHASE_MODEL_MAP = {
-    "recon": "gemma3:4b",
-    "enumerate": "gemma3:4b",
-    "vuln_check": "gemma3:4b",
-    "privesc": "privesc-llm-rl:4b",
-    "report": "gemma3:4b",
+    "recon": DEFAULT_GENERALIST_MODEL,
+    "enumerate": DEFAULT_GENERALIST_MODEL,
+    "vuln_check": DEFAULT_GENERALIST_MODEL,
+    "privesc": DEFAULT_SPECIALIST_MODEL,
+    "report": DEFAULT_GENERALIST_MODEL,
 }
 
 

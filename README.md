@@ -21,7 +21,7 @@ LONLY v2 decouples probabilistic LLM reasoning from deterministic security, isol
 1. **Dual-Mode Model Boundary (`core/agent_roles.py`, `pentest_agent.py`)**:
    - **Mode 1: Conversational Q&A / Strategy**: Answers greetings, inquiries, and security explanations in natural markdown without executing unwanted tools.
    - **Mode 2: Tactical Security Assessment**: Engages the ReAct execution loop when actionable target assessments are requested.
-   - **Generalist Planner (`gemma3:4b`)**: Proposes investigative strategy and target discovery without holding direct execution authority.
+   - **Generalist Planner (`phi4-mini`, configurable via `LONLY_MODEL`)**: Proposes investigative strategy and target discovery without holding direct execution authority.
    - **Privilege Escalation Specialist (`privesc-llm-rl:4b`)**: Generates targeted exploitation hypotheses for Linux privilege vectors.
    - **Verifier Role**: Cryptographically validates security claims against stored artifacts.
 2. **Policy Engine (`core/policy.py`, `core/risk.py`)**:

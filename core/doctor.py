@@ -80,11 +80,17 @@ def check_ollama_service() -> list[DiagnosticResult]:
             models = [m.get("name", "") for m in data.get("models", [])]
             results.append(DiagnosticResult("Ollama", "Ollama Daemon", "OK", "Running at http://localhost:11434"))
 
-            has_gemma = any("gemma3:4b" in m for m in models)
-            if has_gemma:
-                results.append(DiagnosticResult("Ollama", "gemma3:4b (Generalist)", "OK", "Model ready in local cache"))
+            active_model = os.environ.get("LONLY_MODEL", "phi4-mini")
+            has_active = any(active_model.split(":")[0] in m for m in models)
+            if has_active:
+                results.append(DiagnosticResult("Ollama", f"{active_model} (Generalist)", "OK", "Model ready in local cache"))
             else:
-                results.append(DiagnosticResult("Ollama", "gemma3:4b (Generalist)", "WARN", "Missing ('ollama pull gemma3:4b')"))
+                has_any_gen = any("phi4" in m or "gemma3" in m for m in models)
+                if has_any_gen:
+                    matching = [m for m in models if "phi4" in m or "gemma3" in m][0]
+                    results.append(DiagnosticResult("Ollama", f"{matching} (Generalist)", "OK", "Model ready in local cache"))
+                else:
+                    results.append(DiagnosticResult("Ollama", f"{active_model} (Generalist)", "WARN", f"Missing ('ollama pull {active_model}')"))
 
             has_specialist = any("privesc-llm-rl" in m for m in models)
             if has_specialist:
