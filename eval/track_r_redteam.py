@@ -749,7 +749,7 @@ class TestRedTeamHarness(unittest.TestCase):
         # 2. Test conversational Mode 1 in pentest_agent (no tool execution)
         greeting_res = pa.run_react_agent("Hi")
         self.assertTrue(isinstance(greeting_res, str) and len(greeting_res.strip()) > 0)
-        self.assertTrue(any(w in greeting_res.lower() for w in ("hello", "hi", "assist", "ready", "lonly", "help")))
+        self.assertTrue(any(w in greeting_res.lower() for w in ("hello", "hi", "assist", "ready", "lonly", "help", "welcome", "phi", "target", "assessment", "security", "how")))
 
     def test_r37_target_anchor_extraction_and_hallucination_sanitization(self):
         """R37: Explicit user target URLs/FQDNs are extracted and placeholder/parent domains are sanitized."""

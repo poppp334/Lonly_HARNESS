@@ -25,6 +25,8 @@ class RustScanInput(BaseModel):
     target: str = Field(..., description="The target IP address or hostname to scan.")
     ports: Optional[str] = Field(default=None, description="Port range (e.g., '1-65535', '80,443', '1-1000'). If None, scans all 65535 ports.")
     scan_version: bool = Field(default=False, description="Set True to run deep Nmap version detection on discovered ports. Default is False.")
+    ulimit: Optional[int] = Field(default=5000, description="Max open files limit (default 5000).")
+    batch_size: Optional[int] = Field(default=1000, description="Batch size of ports to scan at once (default 1000).")
 
 
 class MasscanInput(BaseModel):
@@ -43,7 +45,7 @@ class Enum4linuxInput(BaseModel):
 
 class LdapSearchInput(BaseModel):
     target_ip: str = Field(..., description="The IP address of the target LDAP or Active Directory server.")
-    base_dn: str = Field(..., description="The Base Distinguished Name (DN) to start the search from (e.g., 'dc=domain,dc=local').")
+    base_dn: str = Field(default="", description="The Base Distinguished Name (DN) to start the search from (e.g., 'dc=domain,dc=local').")
     search_filter: str = Field(default="(objectClass=*)", description="The LDAP search filter.")
 
 

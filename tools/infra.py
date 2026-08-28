@@ -118,6 +118,11 @@ def impacket_tool_execute(tool_name: str, target: str, connection_string: str, e
     """Execute various Impacket framework tools for Windows/Active Directory assessment."""
     host = clean_target(target)
     bin_name = tool_name.strip()
+    if not shutil.which(bin_name):
+        if shutil.which(f"impacket-{bin_name}"):
+            bin_name = f"impacket-{bin_name}"
+        elif shutil.which(bin_name.replace(".py", "")):
+            bin_name = bin_name.replace(".py", "")
     argv = [f"{connection_string}@{host}"]
     if extra_args:
         argv.extend(shlex.split(extra_args))
@@ -127,7 +132,10 @@ def impacket_tool_execute(tool_name: str, target: str, connection_string: str, e
 @tool(args_schema=ShellExecInput)
 def shell_exec(cmd: str, timeout: int = 60) -> str:
     """Execute an arbitrary command on the host system via safe ExecutionBroker (shell=False)."""
-    safe_timeout = max(5, min(int(timeout), 300))
+    try:
+        safe_timeout = max(5, min(int(timeout), 300))
+    except (ValueError, TypeError):
+        safe_timeout = 60
     parts = shlex.split(cmd.strip())
     if not parts:
         return "[ERROR] Empty command string."

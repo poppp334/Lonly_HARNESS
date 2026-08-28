@@ -16,7 +16,7 @@ from tools.base import run_argv, clean_target, find_wordlist
 
 class CrackMapExecInput(BaseModel):
     target: str = Field(..., description="The target IP address, hostname, or CIDR range.")
-    protocol: Literal["smb", "ssh", "winrm", "mssql", "ftp", "ldap"] = Field(default="smb", description="Protocol service to test (smb, ssh, winrm, mssql, ftp, ldap).")
+    protocol: str = Field(default="smb", description="Protocol service to test: 'smb', 'ssh', 'winrm', 'mssql', 'ftp', 'ldap', 'rdp'.")
     username: str = Field(default="", description="Username for authentication testing.")
     password: str = Field(default="", description="Password or NTLM Hash for authentication testing.")
     exec_cmd: str = Field(default="", description="Remote command to execute upon successful authentication (e.g., 'whoami').")
@@ -37,7 +37,7 @@ class MetasploitAuxInput(BaseModel):
 
 
 class ReverseShellListenerInput(BaseModel):
-    port: int = Field(..., description="The local port number to listen on.")
+    port: int = Field(default=4444, description="The local port number to listen on.")
     listen_timeout: int = Field(default=60, description="Time in seconds to wait for an incoming connection.")
 
 
@@ -46,7 +46,13 @@ def crackmapexec(target: str, protocol: str = "smb", username: str = "", passwor
     """Network authentication testing, service scanning, and password validation via CrackMapExec / NetExec."""
     host = clean_target(target)
     bin_name = "nxc" if shutil.which("nxc") else "crackmapexec"
-    valid_proto = protocol.lower() if protocol.lower() in ("smb", "ssh", "winrm", "mssql", "ftp", "ldap") else "smb"
+    proto_clean = str(protocol).strip().lower()
+    proto_map = {
+        "smb": "smb", "cifs": "smb", "windows": "smb",
+        "ssh": "ssh", "winrm": "winrm", "mssql": "mssql",
+        "ftp": "ftp", "ldap": "ldap", "rdp": "rdp",
+    }
+    valid_proto = proto_map.get(proto_clean, "smb")
     argv = [valid_proto, host]
     if username:
         argv.extend(["-u", username])
