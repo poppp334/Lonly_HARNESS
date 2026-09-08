@@ -52,10 +52,12 @@ def check_python_packages() -> list[DiagnosticResult]:
         ("langchain", "LangChain Core"),
         ("langchain_ollama", "LangChain Ollama Provider"),
         ("langchain_chroma", "ChromaDB LangChain Bridge"),
-        ("langchain_huggingface", "HuggingFace Embeddings"),
+        ("chromadb", "ChromaDB Vector Store"),
         ("pydantic", "Pydantic Validation"),
         ("requests", "HTTP Client"),
         ("networkx", "NetworkX Graph Analysis"),
+        ("impacket", "Impacket Network Toolkit"),
+        ("sqlmap", "SQLMap Engine"),
     ]
     for mod_name, label in packages:
         try:
@@ -97,6 +99,13 @@ def check_ollama_service() -> list[DiagnosticResult]:
                 results.append(DiagnosticResult("Ollama", "privesc-llm-rl (Specialist)", "OK", "Model ready in local cache"))
             else:
                 results.append(DiagnosticResult("Ollama", "privesc-llm-rl (Specialist)", "WARN", "Optional specialist not loaded (generalist fallback active)"))
+
+            active_embed = os.environ.get("LONLY_EMBEDDING_MODEL", "nomic-embed-text")
+            has_embed = any(active_embed.split(":")[0] in m for m in models)
+            if has_embed:
+                results.append(DiagnosticResult("Ollama", f"{active_embed} (Embedding)", "OK", "Model ready in local cache"))
+            else:
+                results.append(DiagnosticResult("Ollama", f"{active_embed} (Embedding)", "WARN", f"Missing ('ollama pull {active_embed}')"))
     except Exception as e:
         results.append(DiagnosticResult("Ollama", "Ollama Daemon", "FAIL", f"Cannot connect to http://localhost:11434 ({e})"))
 
@@ -105,6 +114,11 @@ def check_ollama_service() -> list[DiagnosticResult]:
 
 def check_system_tools() -> list[DiagnosticResult]:
     results = []
+    venv_bin = os.path.join(sys.prefix, "bin")
+    search_path = os.environ.get("PATH", "")
+    if venv_bin not in search_path.split(os.pathsep):
+        search_path = f"{venv_bin}{os.pathsep}{search_path}"
+
     # Key security binaries
     tool_bins = [
         ("nmap", "Port & Version Scanner"),
@@ -120,9 +134,10 @@ def check_system_tools() -> list[DiagnosticResult]:
         ("nc", "Netcat Listener"),
         ("ldapsearch", "OpenLDAP Search Client"),
         ("searchsploit", "Exploit Database Search"),
+        ("sqlmap", "Automated SQL Injection Scanner"),
     ]
     for b_name, label in tool_bins:
-        path = shutil.which(b_name)
+        path = shutil.which(b_name, path=search_path)
         if path:
             results.append(DiagnosticResult("Security Tools", f"{b_name} ({label})", "OK", path))
         else:

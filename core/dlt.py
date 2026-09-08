@@ -70,7 +70,10 @@ class ScoringEngine:
             target_str = str(target).strip()
             if not target_str:
                 return False, "Target argument cannot be empty"
-            if tool_name in {"whatweb_web_fingerprint", "curl_http_request", "feroxbuster_dir_scan", "gobuster_dir_scan"}:
+            if tool_name in {
+                "whatweb_web_fingerprint", "curl_web_request", "curl_http_request",
+                "gobuster_directory_scan", "gobuster_dir_scan", "feroxbuster_dir_scan",
+            }:
                 if not (target_str.startswith("http://") or target_str.startswith("https://")):
                     if not target_str.replace("http://", "").replace("https://", "").strip():
                         return False, f"Invalid URL target: {target_str}"

@@ -27,10 +27,11 @@ echo "[+] Installing Python dependencies from requirements.txt..."
 "$PIP" install --upgrade pip
 "$PIP" install -r requirements.txt
 
-# 3. Pull required Ollama model
-echo "[+] Verifying Ollama model (phi4-mini)..."
+# 3. Pull required Ollama models (generalist planner + embedding engine)
+echo "[+] Verifying Ollama models (phi4-mini + nomic-embed-text)..."
 if command -v ollama >/dev/null 2>&1; then
     ollama pull phi4-mini || true
+    ollama pull nomic-embed-text || true
 else
     echo "[-] Warning: 'ollama' binary not in PATH. Please install from https://ollama.ai"
 fi

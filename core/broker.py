@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -116,7 +117,12 @@ class ExecutionBroker:
         # 3. Binary Path Resolution (resolve capability executable if manifested)
         manifest = self.capability_policy.get(executable)
         bin_name = manifest.executable if (manifest and manifest.executable) else executable
-        resolved_bin = shutil.which(bin_name)
+        venv_bin = os.path.join(sys.prefix, "bin")
+        search_path = os.environ.get("PATH", "")
+        if venv_bin not in search_path.split(os.pathsep):
+            search_path = f"{venv_bin}{os.pathsep}{search_path}"
+
+        resolved_bin = shutil.which(bin_name, path=search_path)
         if not resolved_bin:
             err_msg = f"[TOOL ERROR] Executable '{bin_name}' not found in PATH."
             return ExecutionResult(
@@ -134,6 +140,11 @@ class ExecutionBroker:
         full_cmd = [resolved_bin] + [str(a) for a in argv]
         start_time = time.perf_counter()
 
+        # Build child execution environment with venv bin
+        run_env = dict(env if env is not None else os.environ)
+        if venv_bin not in run_env.get("PATH", "").split(os.pathsep):
+            run_env["PATH"] = f"{venv_bin}{os.pathsep}{run_env.get('PATH', '')}"
+
         try:
             # 3. Deterministic execution with shell=False
             proc = subprocess.run(
@@ -143,7 +154,7 @@ class ExecutionBroker:
                 text=True,
                 timeout=timeout,
                 cwd=cwd,
-                env=env,
+                env=run_env,
             )
             duration_ms = (time.perf_counter() - start_time) * 1000.0
             stdout = proc.stdout or ""

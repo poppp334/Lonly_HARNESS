@@ -20,11 +20,12 @@ import shutil
 from tools.base import run_argv, clean_target, find_wordlist
 
 try:
-    from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_chroma import Chroma
+    from core.embeddings import get_embedding_model, format_search_query
 except ImportError:
-    HuggingFaceEmbeddings = None  # type: ignore
     Chroma = None  # type: ignore
+    get_embedding_model = None  # type: ignore
+    format_search_query = None  # type: ignore
 
 
 class SearchsploitInput(BaseModel):
@@ -67,23 +68,27 @@ def rag_query(query: str) -> str:
     """Retrieve relevant penetration testing knowledge, documentation, and technical cheat sheets from internal knowledge base."""
     global rag_vectorstore
     if rag_vectorstore is None:
-        if HuggingFaceEmbeddings is None or Chroma is None:
+        if get_embedding_model is None or Chroma is None:
             return "RAG dependencies not installed."
         if not os.path.exists("chroma_db"):
             return "Knowledge base not initialized. Run python ingest_knowledge.py to build index."
         try:
-            embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+            embeddings = get_embedding_model()
             rag_vectorstore = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
         except Exception as e:
             return f"RAG initialization failed: {e}"
     try:
-        docs = rag_vectorstore.similarity_search(query, k=3)
+        prefixed_query = format_search_query(query) if format_search_query else query.strip()
+        docs = rag_vectorstore.similarity_search(prefixed_query, k=3)
         if not docs:
             return "No relevant knowledge found."
         results = []
         for d in docs:
             source = d.metadata.get("source", "unknown")
-            results.append(f"[Source: {source}]\n{d.page_content}")
+            content = d.page_content
+            if content.startswith("search_document:"):
+                content = content[len("search_document:"):].strip()
+            results.append(f"[Source: {source}]\n{content}")
         return "\n\n---\n".join(results)
     except Exception as e:
         return f"RAG query error: {e}"
@@ -102,6 +107,7 @@ def linpeas_privilege_escalation_scan(script_path: Optional[str] = None) -> str:
     target_script = find_wordlist(
         script_path or "/usr/share/peass-ng/linux/linpeas.sh",
         [
+            os.path.expanduser("~/.local/bin/linpeas.sh"),
             "/usr/share/peass/linpeas/linpeas.sh",
             "/usr/local/bin/linpeas.sh",
             "/opt/linpeas.sh",

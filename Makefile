@@ -46,8 +46,9 @@ ingest:
 setup:
 	@echo "[+] Checking Python environment..."
 	@$(PYTHON) -m pip install -r requirements.txt
-	@echo "[+] Checking Ollama generalist model..."
+	@echo "[+] Checking Ollama models (generalist planner + embedding engine)..."
 	@ollama pull phi4-mini || true
+	@ollama pull nomic-embed-text || true
 	@echo "[+] Ingesting RAG knowledge base..."
 	@$(PYTHON) ingest_knowledge.py
 	@echo "[+] Running LONLY Doctor diagnostic..."

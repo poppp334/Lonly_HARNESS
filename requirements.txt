@@ -5,13 +5,10 @@ langchain
 langchain-core
 langchain-community
 langchain-ollama
-langchain-huggingface
 langchain-chroma
 
-# Vector Store & Embeddings (RAG)
+# Vector Store & Embeddings (RAG via Ollama)
 chromadb
-sentence-transformers
-huggingface-hub
 
 # Graph Analysis (BloodHound)
 networkx
@@ -21,6 +18,10 @@ pydantic
 
 # HTTP Requests (CVE Lookup)
 requests
+
+# Network Protocols & Web Testing
+impacket
+sqlmap
 
 # Standard library (no install needed):
 # cmd, subprocess, shlex, os, zipfile, json, time, re

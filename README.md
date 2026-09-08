@@ -120,7 +120,7 @@ LONLY enforces strict model boundaries defined in `core/agent_roles.py`:
 | **Generalist Planner** | `phi4-mini` (configurable via `LONLY_MODEL`) | Formulates reconnaissance strategy, interprets observations, coordinates tool sequence. | Proposes tool calls; holds **zero** direct OS or socket execution authority. |
 | **Privilege Escalation Specialist** | `privesc-llm-rl:4b` | Generates deep Linux privilege escalation hypotheses from LinPEAS / SUID artifacts. | Domain-restricted hypothesis generation; dispatched exclusively via broker. |
 | **Verifier Role** | Deterministic Python Runtime (`core/evidence.py`) | Evaluates reported claims (`TypedClaim`) against the cryptographically stored evidence DAG. | Authoritative gatekeeper for all final answers and report generation. |
-| **Semantic Intelligence** | `all-MiniLM-L6-v2` + `ChromaDB` | Fast local semantic search over curated offensive and defensive technical playbooks (`knowledge/`). | Read-only vector database retrieval. |
+| **Semantic Intelligence** | `nomic-embed-text` + `ChromaDB` | Fast local semantic search (8,192 token context, 768-dim) over curated offensive and defensive technical playbooks (`knowledge/`). | Read-only vector database retrieval via native Ollama. |
 
 ### Deterministic Security Boundaries
 
@@ -191,30 +191,30 @@ All 24 tools in `tools/` use discrete argument arrays (`argv`), strict timeout l
 
 | Category | Tool Identifier | Backing Binary | Primary Function | Authorization / Risk Level |
 | :--- | :--- | :--- | :--- | :--- |
-| **Reconnaissance** | `rustscan_port_scan` | `rustscan` | Fast TCP port discovery across 1–65535 | Low Risk (Standard Scope) |
+| **Reconnaissance** | `rustscan_port_scan` | `rustscan` | Fast TCP port discovery across top ports or custom ranges | Low Risk (Standard Scope) |
 | | `nmap_security_scan` | `nmap` | Service version detection, OS identification, NSE scripts | Low Risk (Standard Scope) |
-| | `masscan_port_scan` | `masscan` | Asynchronous high-rate CIDR subnet scanning | Medium Risk (Scope Bound) |
+| | `masscan_port_scan` | `masscan` | Asynchronous high-rate CIDR subnet and port scanning | Low Risk (Standard Scope) |
 | | `whatweb_web_fingerprint` | `whatweb` | Web server, CMS, and technology fingerprinting | Low Risk (Standard Scope) |
 | | `enum4linux_smb_audit` | `enum4linux` | Windows/Samba SMB user and share enumeration | Medium Risk (Dangerous Gate) |
 | | `ldap_search_enumeration` | `ldapsearch` | Active Directory and OpenLDAP query enumeration | Low Risk (Standard Scope) |
 | | `kerbrute_active_directory_assessment` | `kerbrute` | Active Directory username enumeration and spraying | Medium Risk (Scope Bound) |
-| | `dig_dns_lookup` | `dig` | DNS record queries (A, AAAA, MX, TXT, NS, SOA) | Low Risk (Standard Scope) |
-| | `dnsrecon_enum` | `dnsrecon` | DNS zone transfer and subdomain enumeration | Low Risk (Standard Scope) |
-| **Web Assessment** | `gobuster_dir_scan` | `gobuster` | Directory and file path brute-forcing | Low Risk (Standard Scope) |
-| | `feroxbuster_dir_scan` | `feroxbuster` | Recursive high-speed web content discovery | Low Risk (Standard Scope) |
-| | `ffuf_fuzz_scan` | `ffuf` | High-speed HTTP parameter and endpoint fuzzing | Low Risk (Standard Scope) |
-| | `nikto_web_scan` | `nikto` | Comprehensive web server vulnerability scan | High Risk (Dangerous Gate) |
+| **Web Assessment** | `gobuster_directory_scan` | `gobuster` | Directory and file path brute-forcing | Low Risk (Standard Scope) |
+| | `ffuf_web_fuzz` | `ffuf` | High-speed HTTP parameter, path, and header fuzzing | Low Risk (Standard Scope) |
+| | `nikto_web_scan` | `nikto` | Comprehensive web server vulnerability scan | Medium Risk (Dangerous Gate) |
 | | `sqlmap_vulnerability_assessment` | `sqlmap` | Automated SQL injection detection and testing | High Risk (Dangerous Gate) |
 | | `wpscan_wordpress_audit` | `wpscan` | WordPress plugin, theme, and user security audit | Low Risk (Standard Scope) |
-| | `curl_http_request` | `curl` | Raw HTTP request crafting and response inspection | Low Risk (Standard Scope) |
-| | `sslscan_tls_audit` | `sslscan` | SSL/TLS cipher suites and certificate analysis | Low Risk (Standard Scope) |
-| | `testssl_tls_eval` | `testssl.sh` | In-depth TLS vulnerability and cipher testing | Low Risk (Standard Scope) |
-| **Credentials & Lateral** | `crackmapexec_auth_audit` | `crackmapexec` / `nxc` | Protocol authentication testing (SMB, WinRM, SSH) | High Risk (Confirm-Required) |
-| | `hydra_network_bruteforce` | `hydra` | Multi-protocol network login brute-forcing | High Risk (Confirm-Required) |
+| | `curl_web_request` | `curl` | HTTP request crafting, header inspection, and response retrieval | Low Risk (Standard Scope) |
+| **Credentials & Lateral** | `crackmapexec` | `crackmapexec` / `nxc` | Protocol authentication testing (SMB, WinRM, SSH) | High Risk (Confirm-Required) |
+| | `hydra_brute_force` | `hydra` | Multi-protocol network login brute-forcing | High Risk (Confirm-Required) |
 | | `metasploit_auxiliary_scanner` | `msfconsole` | Execution of Metasploit auxiliary scanner modules | High Risk (Confirm-Required) |
-| **Infra & Intelligence** | `searchsploit_lookup` | `searchsploit` | Offline Exploit-DB vulnerability search | Low Risk (Offline) |
-| | `cve_lookup_advisory` | Python / NVD API | NVD CVE metadata query and local exploit cross-check | Low Risk (Offline/Online) |
-| | `shell_exec` | Subprocess Broker | Policy-monitored host command execution | Medium Risk (Confirm-Required) |
+| | `reverse_shell_listener` | `nc` | Network listener configuration to capture reverse shells | High Risk (Interactive) |
+| **Infra & Intelligence** | `linpeas_privilege_escalation_scan` | `linpeas.sh` | Local Linux privilege escalation auditing | Medium Risk (Standard Scope) |
+| | `searchsploit_exploit_lookup` | `searchsploit` | Offline Exploit-DB vulnerability search | Low Risk (Offline) |
+| | `cve_lookup` | Python / NVD API | NVD CVE metadata query and local exploit cross-check | Low Risk (Offline/Online) |
+| | `impacket_tool_execute` | `impacket` | Active Directory protocol attacks (secretsdump, wmiexec, etc.) | High Risk (Scope Bound) |
+| | `bloodhound_analyze` | Python / BloodHound | Offline SharpHound collection ingest and graph analysis | Low Risk (Offline) |
+| | `rag_query` | `ChromaDB` / `nomic-embed-text` | Semantic search over curated pentesting playbooks | Low Risk (Offline) |
+| | `shell_exec` | Subprocess Broker | Policy-monitored host command execution with discrete `argv` | Critical Risk (Confirm-Required) |
 
 ---
 
@@ -344,6 +344,7 @@ make run
 | `/report` | `/report` | Compiles a signed Markdown engagement report with SHA-256 evidence proofs. |
 | `/doctor` | `/doctor` | Runs system diagnostics, tool binary detection, and Ollama model checks. |
 | `/clear` | `/clear` | Clears active conversation memory and in-memory findings for the current session. |
+| `/help` | `/help` | Displays the interactive command center guide and available commands. |
 | `exit` / `quit` | `exit` | Gracefully closes the session and exits LONLY. |
 
 ### Example 1: Conversational Concept Explanation (Mode 1)
@@ -413,6 +414,7 @@ Lonly_HARNESS/
 │   ├── cli_reader.py                  # Readline arrow key history & tab autocompleter
 │   ├── dlt.py                         # DLT Engine, Scorer, 4-Tier Oracle & Pareto Optimizer
 │   ├── doctor.py                      # System diagnostics & dependency validator
+│   ├── embeddings.py                  # Centralized Ollama nomic-embed-text provider & prefix formatter
 │   ├── engagement.py                  # Engagement, Run, and Approval data structures
 │   ├── evidence.py                    # Content-addressable DAG evidence graph & ClaimVerifier
 │   ├── extractor.py                   # Structured fact extractor for prompt context hygiene
@@ -432,18 +434,27 @@ Lonly_HARNESS/
 ├── tools/                             # Modular 24-tool subsystem (run_argv brokered)
 │   ├── __init__.py                    # Central tool registry
 │   ├── base.py                        # Subprocess execution wrapper & output bounds
-│   ├── recon.py                       # Nmap, RustScan, Masscan, WhatWeb, Enum4linux, LDAP, Dig, Dnsrecon
-│   ├── web.py                         # Gobuster, Feroxbuster, Ffuf, Nikto, Sqlmap, WPScan, Curl, SSLScan, Testssl
-│   ├── creds.py                       # CrackMapExec, Hydra, Metasploit
-│   └── infra.py                       # LinPEAS, SearchSploit, CVE Lookup, Shell Exec
+│   ├── recon.py                       # RustScan, Nmap, Masscan, WhatWeb, Enum4linux, LDAP, Kerbrute
+│   ├── web.py                         # Gobuster, Ffuf, Nikto, SQLMap, WPScan, Curl
+│   ├── creds.py                       # CrackMapExec, Hydra, Metasploit, ReverseShell
+│   └── infra.py                       # LinPEAS, SearchSploit, CVE Lookup, Impacket, BloodHound, RAG, Shell
+├── models/                            # Specialist node, protocols, benchmarks, and SFT
+│   ├── privesc_protocol.py            # Specialist protocol aligned with arXiv:2603.17673
+│   ├── smoke_test.py                  # Format adherence verification
+│   ├── benchmark_runner.py            # Benchmark evaluation runner
+│   ├── analyze_benchmark.py           # Trajectory and benchmark log analyzer
+│   └── sft/                           # Local SFT training flywheel (Unsloth QLoRA, GGUF merge)
 ├── eval/                              # Acceptance & Evaluation Suite (96/96 checks)
 │   ├── eval_lonly.py                  # Unified acceptance test runner
+│   ├── ci_security_gate.py            # Automated CI/CD security gate & invariant checker
 │   ├── track_a_runner.py              # Scenario integration tests (Track A)
 │   ├── track_b_worker.py              # Subprocess-isolated tool smoke worker (Track B)
 │   ├── track_c_scorer.py              # Trajectory quality scorer (Track C)
 │   ├── track_dlt.py                   # DLT framework invariant tests (Track DLT)
 │   ├── track_e_cli.py                 # CLI interactive & edge case test suite (Track E)
 │   └── track_r_redteam.py             # 39-check adversarial red team suite (Track R)
+├── setup/                             # Native system tool installer scripts
+│   └── install-system-tools.sh        # Arch/Omarchy/Kali native package & wordlist installer
 ├── docs/                              # Technical specifications & design documents
 │   ├── DLT.md                         # Dynamics Language Test (DLT) Technical Innovation Specification
 │   ├── Plan-implement.md              # Production implementation roadmap
