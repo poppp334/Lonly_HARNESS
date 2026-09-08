@@ -206,6 +206,16 @@ def track_e() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Track F — privesc specialist delegation node unit tests
+# ---------------------------------------------------------------------------
+def track_f() -> None:
+    from eval.track_f_privesc import run_track_f_fixtures
+    fixtures = run_track_f_fixtures()
+    for name, passed, detail in fixtures:
+        check(name, passed, detail)
+
+
+# ---------------------------------------------------------------------------
 # Track R — adversarial red team & security boundary suite
 # ---------------------------------------------------------------------------
 def track_r() -> None:
@@ -261,6 +271,7 @@ def main() -> int:
     track_c()
     track_a()
     track_e()
+    track_f()
     track_r()
     track_dlt()
     track_b()
