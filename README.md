@@ -31,6 +31,7 @@ Unauthorized access to computer systems, networks, or digital infrastructure is 
 7. [Forensic Evidence & Cryptographic Audit](#forensic-evidence--cryptographic-audit)
 8. [Adversarial Hardening & Acceptance Suite (96/96 Checks)](#adversarial-hardening--acceptance-suite-9696-checks)
 9. [Installation & Quick Start](#installation--quick-start)
+   - [PrivEsc Specialist Model (`privesc-llm-rl:4b`) — Build & Serve](#privesc-specialist-model-privesc-llm-rl4b--build--serve)
 10. [CLI Command Reference & Workflow Examples](#cli-command-reference--workflow-examples)
 11. [Project Structure](#project-structure)
 12. [License](#license)
@@ -322,6 +323,146 @@ make dlt-benchmark
 # 6. Launch the Interactive LONLY Shell
 make run
 ```
+
+### PrivEsc Specialist Model (`privesc-llm-rl:4b`) — Build & Serve
+
+> **Author credit**: the model builds on the PrivEsc-LLM work by
+> **[Philipp Normann, Andreas Happe, Jürgen Cito, and Daniel Arp](https://arxiv.org/abs/2603.17673)**,
+> *"Towards Reliable Local Security Agents: Verifiable Post-Training for Linux
+> Privilege Escalation"* (arXiv:2603.17673, NDSS 2026), Security & AI Lab (SAILAB),
+> TU Wien. Weights are released under the **MIT license** at
+> [`sailab-vienna/privesc-llm-4b`](https://huggingface.co/sailab-vienna/privesc-llm-4b);
+> base model `Qwen/Qwen3-4B-Instruct-2507` is Apache 2.0. Please cite the paper
+> when this model is used in published research or reports.
+
+`privesc-llm-rl:4b` is **not published on the Ollama Library** — `ollama pull privesc-llm-rl:4b`
+fails with `Error: pull model manifest: file does not exist`. The exact paper model
+(arXiv:2603.17673, NDSS 2026, TU Wien SAILAB) is published on Hugging Face
+[`sailab-vienna/privesc-llm-4b`](https://huggingface.co/sailab-vienna/privesc-llm-4b)
+**only as LoRA adapters** (`rl_adapter/`, `sft_adapter/`) over the base
+`Qwen/Qwen3-4B-Instruct-2507`. To get it into the harness you must build it
+locally: download → merge → convert → quantize → `ollama create`.
+
+#### Step 1 — Prerequisites (one-time)
+
+```bash
+# ml_env: Python 3.12 venv with torch (CPU OK), transformers, safetensors,
+# huggingface_hub, cmake, sentencepiece (required by GGUF conversion)
+mkdir -p ~/models/adapters
+uv venv ~/ml_env --python 3.12
+uv pip install --python ~/ml_env/bin/python torch transformers safetensors huggingface_hub cmake sentencepiece
+
+# llama.cpp build (needed for convert_hf_to_gguf.py + llama-quantize)
+git clone --depth 1 https://github.com/ggml-org/llama.cpp ~/llama.cpp
+~/ml_env/bin/cmake -S ~/llama.cpp -B ~/llama.cpp/build -DCMAKE_BUILD_TYPE=Release \
+  -G "Unix Makefiles" && cmake --build ~/llama.cpp/build --target llama-quantize -j$(nproc)
+```
+
+**Requirements**: ~15 GB free disk (base 8 GB + F16 8.8 GB + Q4 2.6 GB; the F16
+intermediate can be deleted after quantization), ~9 GB free RAM for the merge,
+and no `sudo` needed (cmake installs into `ml_env`).
+
+#### Step 2 — Download base model + adapters
+
+```bash
+uv pip install --python ~/ml_env/bin/python huggingface_hub
+~/ml_env/bin/python - <<'EOF'
+import os
+from huggingface_hub import snapshot_download
+snapshot_download("Qwen/Qwen3-4B-Instruct-2507",
+                  local_dir=os.path.expanduser("~/models/qwen3-4b-instruct-2507"))
+for name in ("rl_adapter", "sft_adapter"):
+    snapshot_download("sailab-vienna/privesc-llm-4b",
+                      allow_patterns=[f"{name}/*"],
+                      local_dir=os.path.expanduser(f"~/models/adapters/{name}"))
+EOF
+```
+
+> **Gotcha**: `snapshot_download(local_dir=...)` with `allow_patterns=[f"{name}/*"]`
+> nests files one level deeper (`~/models/adapters/rl_adapter/rl_adapter/*`).
+> Flatten before merging:
+> `mv ~/models/adapters/rl_adapter/rl_adapter/* ~/models/adapters/rl_adapter/ && rmdir ~/models/adapters/rl_adapter/rl_adapter`
+
+#### Step 3 — Merge LoRA into base (exact paper weights)
+
+```bash
+~/ml_env/bin/python models/sft/merge_adapter.py \
+  ~/models/adapters/rl_adapter \
+  ~/models/qwen3-4b-instruct-2507 \
+  ~/models/privesc-llm-4b-rl-merged
+```
+
+The merge is a **manual LoRA delta** (`W' = W + (B @ A) * alpha / r`, rank 8,
+alpha 32) done by `models/sft/merge_adapter.py` — not the `peft` loader, because
+the paper's adapters use key formats (Unsloth / peft namespaces) that peft's
+`ensure_weight_tying` silently no-ops on. The script **verifies the merge is not
+a no-op** (`max|delta| > 0` asserted; logs the applied delta count and max
+magnitude) and handles the tied-embedding base by cloning `embed_tokens` to
+`lm_head` before applying deltas. Expected result: `applying 253 LoRA deltas`,
+`max|delta| ≈ 0.02`.
+
+#### Step 4 — Convert to GGUF + quantize to Q4_K_M
+
+```bash
+~/ml_env/bin/python ~/llama.cpp/convert_hf_to_gguf.py \
+  ~/models/privesc-llm-4b-rl-merged \
+  --outfile ~/models/privesc-llm-4b-rl-f16.gguf --outtype f16
+~/llama.cpp/build/bin/llama-quantize \
+  ~/models/privesc-llm-4b-rl-f16.gguf \
+  ~/models/privesc-llm-4b-rl-Q4_K_M.gguf Q4_K_M
+rm ~/models/privesc-llm-4b-rl-f16.gguf   # free intermediate
+```
+
+Result: `~2.6 GB` Q4_K_M (4.91 BPW) — fits the 4 GB class GPU together with the
+8k-context KV cache. The Qwen3 chat template is embedded in the GGUF
+automatically; no TEMPLATE directive is needed.
+
+#### Step 5 — Register in Ollama
+
+`models/Modelfile.template` bakes the inference hyperparameters
+(`temperature 0.7`, `top_p 0.8`, `top_k 20`, `num_ctx 8192`, `num_predict 2048`)
+and deliberately keeps the system prompt out (it is injected per-target by
+`models/privesc_protocol.py` to avoid scenario-specific tech debt):
+
+```bash
+sed "s|__GGUF__|/home/windows/models/privesc-llm-4b-rl-Q4_K_M.gguf|" \
+  models/Modelfile.template > /tmp/Modelfile
+ollama create privesc-llm-rl:4b -f /tmp/Modelfile
+ollama run --verbose privesc-llm-rl:4b "Say hello in one short sentence."
+```
+
+#### Step 6 — Verify protocol adherence + harness integration
+
+```bash
+~/pentest_env/bin/python models/smoke_test.py privesc-llm-rl:4b   # expect SMOKE: PASS
+make doctor                                                      # expect "Model ready in local cache"
+```
+
+The smoke test verifies the model speaks the exact paper protocol
+(`<tool_call>`/`<tool_response>` JSON, `exec_command` / `test_credentials`
+schemas). Note it uses a **fake backend** and never grants root.
+
+#### Step 7 — Confirm the harness wires the model
+
+- Specialist binding: `core/state.py` `DEFAULT_SPECIALIST_MODEL` and
+  `pentest_agent.py:64` default to `privesc-llm-rl:4b`; override via
+  `LONLY_SPECIALIST_MODEL` env var. The privesc phase routes via
+  `PHASE_MODEL_MAP["privesc"]`.
+- Runtime context: `_run_privesc_specialist()` only engages when
+  `LONLY_PRIVESC_SSH` + `LONLY_PRIVESC_USER` are set (password optional via
+  `LONLY_PRIVESC_PASSWORD`, turn cap via `LONLY_PRIVESC_MAX_TURNS`, default 20).
+- Fallback: if the model is missing, the loop **degrades gracefully** to the
+  `phi4-mini` generalist — a missing specialist is never fatal.
+- Regression coverage: `eval/track_f_privesc.py` (Track F) unit-tests the whole
+  delegation block (`eval/track_f_privesc.py` covers config gate, import
+  fallback, ssh argv contract, `got_root` heuristics, spec construction, and
+  trajectory path); run with `make test` (106/106 checks).
+
+> **Reproducibility note**: served via Ollama at Q4_K_M on a 4 GB GPU, the
+> deployed model is the exact paper RLVR weights but quantized — expect
+> ≈90–95%+ of the paper's benchmark success, with the only material
+> difference being quantization (paper evaluates bf16). Run
+> `models/smoke_test.py` after every rebuild before trusting the stack.
 
 ---
 

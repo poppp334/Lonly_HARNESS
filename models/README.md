@@ -3,6 +3,13 @@
 LONLY's privilege-escalation specialist node, built from the open artifacts of
 [arXiv:2603.17673](https://arxiv.org/abs/2603.17673) (PrivEsc-LLM, MIT).
 
+**Author credit**: the underlying research is
+*"Towards Reliable Local Security Agents: Verifiable Post-Training for Linux
+Privilege Escalation"* by **[Philipp Normann, Andreas Happe, Jürgen Cito, and
+Daniel Arp](https://arxiv.org/abs/2603.17673)** (Security & AI Lab, TU Wien —
+[github.com/sailab-vienna/privesc-llm](https://github.com/sailab-vienna/privesc-llm)).
+Weights are MIT-licensed; cite the paper when used in research or reports.
+
 The paper post-trains `Qwen3-4B-Instruct-2507` (Apache 2.0) with SFT + RLVR on
 verifiable Linux privesc tasks: **93.3% success on the 12-scenario static
 benchmark within 20 rounds**, second only to Claude Opus 4.7, ~80x cheaper.
