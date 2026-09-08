@@ -335,6 +335,15 @@ make run
 > base model `Qwen/Qwen3-4B-Instruct-2507` is Apache 2.0. Please cite the paper
 > when this model is used in published research or reports.
 
+> **First public full-model release.** The upstream authors publish **LoRA
+> adapters only** (`sailab-vienna/privesc-llm-4b` has no GGUF and no merged
+> checkpoint), so LONLY's serve pipeline (`privesc-llm-rl:4b`) is the **first
+> public, serving-ready (merged + quantized)** release of PrivEsc-LLM 4B (RL),
+> published at
+> [`Itthipon222/privesc-llm-rl-4b-itthipon`](https://huggingface.co/Itthipon222/privesc-llm-rl-4b-itthipon).
+> (Search-based evidence — HF model search for `privesc-llm` with the `gguf`
+> filter returned no other full release at publication time.)
+
 `privesc-llm-rl:4b` is **not published on the Ollama Library** — `ollama pull privesc-llm-rl:4b`
 fails with `Error: pull model manifest: file does not exist`. The exact paper model
 (arXiv:2603.17673, NDSS 2026, TU Wien SAILAB) is published on Hugging Face
