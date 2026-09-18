@@ -389,15 +389,20 @@ Original plan:
 Acceptance: new eval checks R43–R52; `make test` green; two negative tests prove hydra/impacket
 blocked without approval and allowed with it.
 
-### Phase 1 — State, persistence, audit (est. ~1 week) — PARTIAL (1a shipped 2026-09-18)
+### Phase 1 — State, persistence, audit (est. ~1 week) — COMPLETED 2026-09-18
 Shipped (1a): `core/storage.py` (atomic writes, flock appends, tolerant JSONL, 0700 dirs);
 append-only session transcripts + atomic meta; no auto-adopt of the newest session;
 destructive CWD-log clear removed from the agent; unique run directories for findings/evidence;
 evidence artifacts persisted incrementally + atomic snapshot; audit lazy tail-load with tail
 signature checks, per-instance thread lock + cross-process flock, fsync, and correct
-multi-process sequence. New checks R52–R62; suite is now **139/139**.
-Pending (1b): `SessionContext` to replace module globals (B1/B2), seen-calls in context (C6),
-token-budgeted history (C8), WAL rotation/retention caps (B5/C4), session eviction.
+multi-process sequence.
+Shipped (1b): `core/session_context.py` (`SessionContext` owning scope, chat history, risk
+events, task number, seen calls, findings, task tree, evidence, per-session broker + executor);
+`core/tool_context.broker_context` routes `run_argv` to the context broker; legacy module-level
+names resolve to the default context via PEP 562 `__getattr__`; seen-calls state moved into the
+context (no per-turn log re-parse); token-bounded history (`_trim_history`, `/session load` cap);
+audit size-cap rotation (`LONLY_AUDIT_MAX_BYTES`); session retention cap (`LONLY_MAX_SESSIONS`).
+New checks R52–R67; suite is now **144/144**.
 
 Original plan:
 B1–B5, C1–C3, C6, C8; `SessionContext` + storage helper (lock/atomic/append); audit lazy tail-load,

@@ -13,7 +13,7 @@ Weights are MIT-licensed; cite the paper when used in research or reports.
 The paper post-trains `Qwen3-4B-Instruct-2507` (Apache 2.0) with SFT + RLVR on
 verifiable Linux privesc tasks: **93.3% success on the 12-scenario static
 benchmark within 20 rounds**, second only to Claude Opus 4.7, ~80x cheaper.
-Base `gemma3:4b` remains LONLY's generalist; this model is the privesc-phase
+Base `phi4-mini` remains LONLY's generalist; this model is the privesc-phase
 specialist (the "specialist agents" pattern from docs/cybersecurity-harness-research.md).
 
 ## Files
@@ -46,7 +46,7 @@ The specialist is a *phase-routed node*: LONLY's task tree (recon → enumerate 
 vuln-check → **privesc** → report) invokes `PrivescSpecialist` for the privesc
 phase only, with a backend that wraps LONLY's guardrails (scope allowlist,
 risk-budget accounting, confirm gates) around `exec_command`/`test_credentials`
-against the in-scope target. `gemma3:4b` keeps all other phases.
+against the in-scope target. `phi4-mini` keeps all other phases.
 
 ```python
 from models.privesc_protocol import PrivescSpecialist

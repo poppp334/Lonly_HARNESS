@@ -13,11 +13,17 @@ from contextvars import ContextVar
 from typing import Iterator
 
 _APPROVED: ContextVar[bool] = ContextVar("lonly_tool_approved", default=False)
+_BROKER: ContextVar[object] = ContextVar("lonly_tool_broker", default=None)
 
 
 def current_approval() -> bool:
     """Return the approval decision for the tool call currently executing."""
     return _APPROVED.get()
+
+
+def current_broker():
+    """Return the per-session broker bound to the current tool call, if any."""
+    return _BROKER.get()
 
 
 @contextmanager
@@ -28,3 +34,13 @@ def approval_context(approved: bool) -> Iterator[None]:
         yield
     finally:
         _APPROVED.reset(token)
+
+
+@contextmanager
+def broker_context(broker) -> Iterator[None]:
+    """Bind a broker (per-session scope/audit) to the current execution context."""
+    token = _BROKER.set(broker)
+    try:
+        yield
+    finally:
+        _BROKER.reset(token)

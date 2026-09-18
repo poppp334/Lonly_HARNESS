@@ -4,7 +4,7 @@
 Inspects:
 1. Python Runtime & Virtual Environment
 2. Python Package Dependencies (requirements.txt)
-3. Ollama Server Status & Models (gemma3:4b)
+3. Ollama Server Status & Models (phi4-mini)
 4. System Pentest Binaries (24 tools in arsenal)
 5. Wordlist Directory Paths & Symlinks
 6. ChromaDB Vector Store & Knowledge Base

@@ -15,7 +15,7 @@ from typing import Callable, Optional
 
 from core.broker import DEFAULT_BROKER, ExecutionBroker
 from core.parser import TOOL_FAILURE_PATTERNS
-from core.tool_context import current_approval
+from core.tool_context import current_approval, current_broker
 
 # Explicit injection seam for tests and embedding hosts. When set, run_argv
 # delegates to this executor instead of the broker. This replaces the former
@@ -112,7 +112,7 @@ def run_argv(
             broker=broker,
         )
 
-    b = broker or DEFAULT_BROKER
+    b = broker or current_broker() or DEFAULT_BROKER
     res = b.execute(
         executable=executable,
         argv=argv,

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -66,10 +67,30 @@ class SessionManager:
 
     DEFAULT_BASE_DIR = Path.home() / ".lonly" / "sessions"
 
-    def __init__(self, base_dir: Optional[Path | str] = None):
+    def __init__(self, base_dir: Optional[Path | str] = None, max_sessions: Optional[int] = None):
         self.base_dir = Path(base_dir) if base_dir else self.DEFAULT_BASE_DIR
         ensure_dir(str(self.base_dir))
         self.active_session: Optional[SessionState] = None
+        self.max_sessions = (
+            max_sessions
+            if max_sessions is not None
+            else int(os.environ.get("LONLY_MAX_SESSIONS", "200"))
+        )
+
+    def _prune_sessions(self) -> None:
+        """Delete the oldest stored sessions beyond the retention cap."""
+        if not self.max_sessions or self.max_sessions <= 0:
+            return
+        sessions = self.list_sessions()
+        active_id = self.active_session.session_id if self.active_session else None
+        for entry in sessions[self.max_sessions:]:
+            sid = entry.get("session_id")
+            if not sid or sid == active_id:
+                continue
+            try:
+                shutil.rmtree(self.base_dir / sid)
+            except OSError:
+                pass
 
     def create_session(self, title: str = "Pentest Session", session_id: Optional[str] = None) -> SessionState:
         """Create a new persistent session workspace with clean, isolated state."""
@@ -77,6 +98,7 @@ class SessionManager:
         session = SessionState(session_id=s_id, title=title)
         self.active_session = session
         self.save_session(session)
+        self._prune_sessions()
         return session
 
     def get_or_create_active_session(self) -> SessionState:

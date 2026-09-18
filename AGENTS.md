@@ -8,7 +8,7 @@ This document provides architectural guidance, subsystem organization, and conve
 
 LONLY is an autonomous penetration testing agent operating in a two-tier hybrid architecture:
 
-* **Generalist Orchestrator (`gemma3:4b`)**: Handles natural language objectives, initial port discovery, web exploitation, Active Directory inspection, and report generation via an interactive ReAct loop in `pentest_agent.py`.
+* **Generalist Orchestrator (`phi4-mini`)**: Handles natural language objectives, initial port discovery, web exploitation, Active Directory inspection, and report generation via an interactive ReAct loop in `pentest_agent.py`.
 * **PrivEsc Specialist (`privesc-llm-rl:4b`)**: A specialized 4B model (trained via SFT + RLVR on Linux environments) invoked automatically when the `TaskTree` enters the `privesc` phase.
 * **Core Subsystem (`core/`)**:
   * `core/guardrails.py`: Deny-by-default scope allowlists (`ALLOWED_TARGETS`), execution gates (`DANGEROUS_TOOLS`, `CONFIRM_REQUIRED_TOOLS`), and 5-point cumulative risk budget.
@@ -26,26 +26,35 @@ Lonly_HARNESS/
 ├── core/                     # Core runtime state, parsing, and guardrail policies
 │   ├── guardrails.py         # Scope enforcement, confirm gates, risk budget
 │   ├── parser.py             # 4B ReAct and JSON extraction
-│   └── state.py              # FindingsLog, TaskTree, phase routing
+│   ├── state.py              # FindingsLog, TaskTree, phase routing
+│   ├── session_context.py    # Per-engagement state + per-session broker/scope
+│   ├── storage.py            # Atomic writes, locked JSONL appends, 0700 dirs
+│   ├── ports.py              # LLM / tool / evidence / approval / scope ports
+│   ├── tool_dispatch.py      # Tool-call gate and evidence-recording executor
+│   └── tool_context.py       # Per-call approval + broker context (contextvars)
 ├── tools/                    # 24 modular pentesting tools
 │   ├── __init__.py           # Tool registry and tool_map
-│   ├── base.py               # run_cmd wrapper, target cleaning, wordlist fallbacks
+│   ├── base.py               # run_argv wrapper, target cleaning, wordlist fallbacks
 │   ├── recon.py              # RustScan, Nmap, Masscan, WhatWeb, Enum4linux, LDAP
 │   ├── web.py                # Gobuster, Ffuf, Nikto, SQLMap, WPScan, Curl
 │   ├── creds.py              # CrackMapExec/NetExec, Hydra, Metasploit, ReverseShell
 │   └── infra.py              # LinPEAS, SearchSploit, Impacket, BloodHound, RAG, Shell
 ├── models/                   # Specialist node, protocols, benchmarks, and SFT
 │   ├── privesc_protocol.py   # Specialist protocol aligned with arXiv:2603.17673
+│   ├── dlt_runner.py         # Real streaming Ollama DLT runner
 │   ├── smoke_test.py         # Format adherence verification
 │   ├── benchmark_runner.py   # Benchmark evaluation runner
 │   ├── analyze_benchmark.py  # Trajectory and benchmark log analyzer
 │   └── sft/                  # Local SFT training flywheel (Unsloth QLoRA, GGUF merge)
 ├── eval/                     # Offline test and evaluation harness
-│   ├── eval_lonly.py         # Consolidated 45-check test runner
+│   ├── eval_lonly.py         # Consolidated 144-check test runner
 │   ├── track_a_runner.py     # Scenario integration suite (S1, S2, S4)
 │   ├── track_b_worker.py     # Subprocess-isolated tool smoke tests (24/24)
 │   ├── track_c_scorer.py     # Trajectory and loop quality scorer
-│   └── track_e_cli.py        # CLI interaction and edge-case unit tests
+│   ├── track_e_cli.py        # CLI interaction and edge-case unit tests
+│   ├── track_f_privesc.py    # PrivEsc specialist delegation tests
+│   ├── track_r_redteam.py    # Adversarial red-team / security boundary suite
+│   └── track_dlt.py          # DLT framework invariants
 ├── knowledge/                # Markdown cheat sheets for ChromaDB RAG
 ├── ingest_knowledge.py       # ChromaDB vector store ingestion script
 ├── requirements.txt          # Python dependencies
@@ -72,7 +81,7 @@ Lonly_HARNESS/
 
 ## 4. Engineering & Contribution Rules
 
-1. **Zero Unverified Commits**: Run `eval/eval_lonly.py` before committing. All 139 checks must pass with exit code 0.
+1. **Zero Unverified Commits**: Run `eval/eval_lonly.py` before committing. All 144 checks must pass with exit code 0.
 2. **Modular Tool Contracts**: Tools must be defined under `tools/` with strict Pydantic `args_schema` and registered in `tools/__init__.py`. Never place raw tool execution code directly in `pentest_agent.py`.
 3. **Target Sanitization**: All host and URL parameters must pass through `clean_target()` or `ensure_url()` in `tools/base.py` to prevent formatting failures.
 4. **Safety Gating**:

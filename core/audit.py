@@ -99,6 +99,7 @@ class AuditLedger:
         ledger_path: Optional[str] = None,
         secret_key: Optional[str] = None,
         lazy: bool = False,
+        max_bytes: Optional[int] = None,
     ):
         self.ledger_path = ledger_path
         self._secret_key = secret_key or os.environ.get("LONLY_AUDIT_KEY")
@@ -108,6 +109,11 @@ class AuditLedger:
         self._chain_error: str = ""
         self._lazy = bool(lazy)
         self._lock = threading.Lock()
+        self.max_bytes = (
+            max_bytes
+            if max_bytes is not None
+            else int(os.environ.get("LONLY_AUDIT_MAX_BYTES", str(16 * 1024 * 1024)))
+        )
 
         if self.ledger_path and os.path.exists(self.ledger_path):
             if self._lazy:
@@ -217,6 +223,24 @@ class AuditLedger:
         with self._lock:
             return self._seal_event(event_type, payload, timestamp)
 
+    def _rotate_ledger(self) -> None:
+        """Archive a size-capped ledger and continue on a fresh chain."""
+        archived = ""
+        if self.ledger_path:
+            archived = f"{self.ledger_path}.legacy-{time.strftime('%Y%m%dT%H%M%S')}"
+            try:
+                os.replace(self.ledger_path, archived)
+            except OSError:
+                archived = ""
+        self.events = []
+        self.latest_hash = self.GENESIS_HASH
+        self._next_seq = 0
+        print(
+            f"[i] Audit ledger rotated at the size cap; archived to {archived or 'n/a'}; "
+            f"starting a fresh chain.",
+            file=sys.stderr,
+        )
+
     def _seal_event(
         self,
         event_type: AuditEventType | str,
@@ -225,6 +249,12 @@ class AuditLedger:
     ) -> AuditEvent:
         if self._chain_error:
             self._archive_ledger(self._chain_error)
+        if self.ledger_path and self.max_bytes > 0:
+            try:
+                if os.path.getsize(self.ledger_path) > self.max_bytes:
+                    self._rotate_ledger()
+            except OSError:
+                pass
         if self._lazy and self.ledger_path and os.path.exists(self.ledger_path):
             self.latest_hash = self.GENESIS_HASH
             self._next_seq = 0

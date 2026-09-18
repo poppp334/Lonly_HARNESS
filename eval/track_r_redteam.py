@@ -1353,6 +1353,94 @@ class TestRedTeamHarness(unittest.TestCase):
             self.assertEqual([e.sequence for e in full.events], list(range(n_threads * per_thread)))
 
 
+    def test_r63_session_contexts_are_isolated(self):
+        """R63: separate SessionContexts never share scope, state, or evidence."""
+        from core.session import SessionState
+        from core.session_context import SessionContext
+
+        a = SessionContext(session=SessionState(session_id="sess_a"),
+                           invoker=lambda n, x: "ok", scope=["127.0.0.1"])
+        b = SessionContext(session=SessionState(session_id="sess_b"),
+                           invoker=lambda n, x: "ok", scope=["10.0.0.0/8"])
+        self.assertIsNot(a.findings_log, b.findings_log)
+        self.assertIsNot(a.evidence_graph, b.evidence_graph)
+        self.assertIsNot(a.seen_calls, b.seen_calls)
+        self.assertIsNot(a.broker, b.broker)
+        a.scope.append("10.0.0.1")
+        self.assertNotIn("10.0.0.1", b.scope)
+        self.assertFalse(a.broker.policy.is_in_scope("10.1.1.1"))
+        self.assertTrue(b.broker.policy.is_in_scope("10.1.1.1"))
+
+    def test_r64_context_broker_routes_tool_calls(self):
+        """R64: run_argv uses the context-bound broker, not the global default."""
+        import subprocess as sp
+        from core.guardrails import ALLOWED_TARGETS
+        from core.session import SessionState
+        from core.session_context import SessionContext
+        from core.tool_context import broker_context
+
+        saved = list(ALLOWED_TARGETS)
+        ALLOWED_TARGETS.clear()
+        try:
+            ctx = SessionContext(session=SessionState(session_id="sess_route"),
+                                 invoker=lambda n, x: "ok", scope=["10.0.0.0/8"])
+            fake = sp.CompletedProcess(args=["curl"], returncode=0, stdout="ok", stderr="")
+            with patch("core.broker.subprocess.run", return_value=fake):
+                blocked = run_argv("curl", ["-s", "http://10.1.1.1"], target="10.1.1.1")
+                self.assertIn("[SCOPE BLOCKED]", blocked)
+                with broker_context(ctx.broker):
+                    allowed = run_argv("curl", ["-s", "http://10.1.1.1"], target="10.1.1.1")
+            self.assertNotIn("[SCOPE BLOCKED]", allowed)
+        finally:
+            ALLOWED_TARGETS[:] = saved
+
+    def test_r65_history_trim_bounds_context(self):
+        """R65: _trim_history keeps only the most recent messages, in place."""
+        import pentest_agent as pa
+
+        history = list(range(50))
+        trimmed = pa._trim_history(history, 20)
+        self.assertIs(trimmed, history)
+        self.assertEqual(len(history), 20)
+        self.assertEqual(history[0], 30)
+        self.assertEqual(history[-1], 49)
+
+    def test_r66_audit_ledger_rotates_at_size_cap(self):
+        """R66: a size-capped ledger archives its chain and starts a verifiable one."""
+        import tempfile
+        from core.audit import AuditEventType, AuditLedger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "audit.wal")
+            ledger = AuditLedger(ledger_path=path, secret_key="TEST-KEY", max_bytes=1)
+            ledger.record_event(AuditEventType.PROMPT, {"n": 1})
+            ledger.record_event(AuditEventType.PROMPT, {"n": 2})
+
+            archives = [f for f in os.listdir(tmp) if f.startswith("audit.wal.legacy-")]
+            self.assertTrue(archives, "expected a rotated archive")
+            archived = AuditLedger(ledger_path=os.path.join(tmp, archives[0]), secret_key="TEST-KEY")
+            valid, reason, count = archived.load_and_verify()
+            self.assertTrue(valid, reason)
+            self.assertEqual(count, 1)
+
+            current = AuditLedger(ledger_path=path, secret_key="TEST-KEY")
+            valid, reason, count = current.load_and_verify()
+            self.assertTrue(valid, reason)
+            self.assertEqual(count, 1)
+
+    def test_r67_session_retention_cap(self):
+        """R67: SessionManager prunes the oldest sessions beyond its retention cap."""
+        import tempfile
+        from core.session import SessionManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            sm = SessionManager(base_dir=tmp, max_sessions=2)
+            for i in range(3):
+                sm.create_session(title=f"Retention {i}", session_id=f"sess_ret_{i}")
+            self.assertEqual(len(sm.list_sessions()), 2)
+            self.assertIsNotNone(sm.active_session)
+
+
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
     import io
@@ -1423,6 +1511,11 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R60 Lazy ledger continues the chain from the tail", True, ""),
         ("R61 Interleaved ledger instances keep sequence integrity", True, ""),
         ("R62 Threaded ledger writes verify gap-free", True, ""),
+        ("R63 Session contexts are isolated", True, ""),
+        ("R64 Context broker routes tool calls", True, ""),
+        ("R65 History trim bounds the context window", True, ""),
+        ("R66 Audit ledger rotates at the size cap", True, ""),
+        ("R67 Session retention cap prunes oldest", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

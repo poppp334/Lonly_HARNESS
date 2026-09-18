@@ -89,7 +89,7 @@ class TestPrivescSpecialistBlock(unittest.TestCase):
         sys.modules.pop("privesc_protocol", None)
         FakePrivescSpecialist.last_instance = None
         FakePrivescSpecialist.instances = []
-        pa._findings_log = pa.FindingsLog(run_dir="/tmp/lonly_track_f_run")
+        pa._default_context().findings_log = pa.FindingsLog(run_dir="/tmp/lonly_track_f_run")
 
     # -- helper: full happy-path invocation -------------------------------
     def _run_with_backend(self, run_argv_ret="uid=1000(user) gid=1000"):
@@ -225,7 +225,7 @@ class TestPrivescSpecialistBlock(unittest.TestCase):
         _, _, spec = self._run_with_backend()
         self.assertEqual(
             spec.trajectory_path,
-            os.path.join(pa._findings_log.run_dir, "privesc_trajectories.jsonl"),
+            os.path.join(pa._default_context().findings_log.run_dir, "privesc_trajectories.jsonl"),
         )
 
     def test_f10b_phase_model_map_fallback(self):

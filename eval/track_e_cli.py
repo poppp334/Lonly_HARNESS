@@ -36,15 +36,16 @@ def fake_tool_executor(output: str = "Open 127.0.0.1:80"):
 
 class TestCLIEdgeCases(unittest.TestCase):
     def setUp(self):
-        pa.chat_history.clear()
-        pa._findings_log = pa.FindingsLog()
-        pa._task_tree = pa.TaskTree()
-        pa._evidence_graph = pa.EvidenceGraph()
-        if hasattr(pa, "_rebind_tool_executor"):
-            pa._rebind_tool_executor()
-        pa._task_number = 1
-        pa._carryover_event_log.clear()
-        pa._in_task_risk_events.clear()
+        ctx = pa._default_context()
+        ctx.chat_history.clear()
+        ctx.findings_log = pa.FindingsLog()
+        ctx.task_tree = pa.TaskTree()
+        ctx.evidence_graph = pa.EvidenceGraph()
+        ctx.rebuild_executor()
+        ctx.task_number = 1
+        ctx.carryover_event_log.clear()
+        ctx.in_task_risk_events.clear()
+        ctx.seen_calls.clear()
         if os.path.exists(pa.SESSION_LOG_FILE):
             try:
                 os.remove(pa.SESSION_LOG_FILE)

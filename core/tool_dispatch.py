@@ -25,7 +25,7 @@ from core.guardrails import (
 )
 from core.parser import has_positive_finding, is_tool_failure
 from core.ports import EvidenceSinkPort, ScopePort, ToolInvokerPort
-from core.tool_context import approval_context
+from core.tool_context import approval_context, broker_context
 
 
 @dataclass(frozen=True)
@@ -117,12 +117,14 @@ class ToolCallExecutor:
         invoker: ToolInvokerPort,
         evidence_sink: Optional[EvidenceSinkPort] = None,
         max_inline_output: int = 4000,
+        broker=None,
     ):
         self._invoker = (
             invoker if hasattr(invoker, "invoke_tool") else _CallableInvoker(invoker)
         )
         self._evidence = evidence_sink
         self.max_inline_output = max_inline_output
+        self._broker = broker
 
     def execute(
         self,
@@ -145,7 +147,11 @@ class ToolCallExecutor:
         error = ""
         try:
             with approval_context(approved):
-                raw_output = self._invoker.invoke_tool(tool_name, args)
+                if self._broker is not None:
+                    with broker_context(self._broker):
+                        raw_output = self._invoker.invoke_tool(tool_name, args)
+                else:
+                    raw_output = self._invoker.invoke_tool(tool_name, args)
             if not isinstance(raw_output, str):
                 raw_output = str(raw_output)
         except Exception as exc:  # noqa: BLE001 — tool failures are observations

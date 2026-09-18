@@ -70,9 +70,9 @@ machine-checkable acceptance test in `eval/`.
 - **Track E (E1–E8)**: CLI interaction and edge cases (scope gate, evidence gate, prompt state).
 - **Track F (F1–F10)**: PrivEsc specialist delegation node.
 - **Track DLT (DLT1–DLT15)**: DLT scoring, runner port, no-fabrication guard, negative control.
-- **Track R (R1–R62)**: Adversarial red team & security boundaries.
+- **Track R (R1–R67)**: Adversarial red team & security boundaries.
 - **Track B (B0)**: Subprocess-isolated tool smokes (24/24).
-- Total: **139/139 checks passing (100%)**.
+- Total: **144/144 checks passing (100%)**.
 
 ### N6 — Specialist verification & flywheel (`models/`) [Implemented & Verified]
 - Specialist protocol adherence (`models/privesc_protocol.py`, `models/smoke_test.py`).
@@ -118,6 +118,12 @@ machine-checkable acceptance test in `eval/`.
 - `evaluate_tool_call()` is a pure gate snapshot (checkpoint/dangerous/confirm/duplicate/scope) over injected ports.
 - `ToolCallExecutor` records command/output/finding evidence through the sink and classifies failures/findings without touching agent globals.
 - `tools/base.py` exposes an explicit `set_executor` seam; the former `sys.modules["pentest_agent"]` upward dependency is removed.
+
+### N15 — Per-Session Context (`core/session_context.py`) [Implemented & Verified]
+- `SessionContext` owns scope, chat history, risk events, task number, seen calls, findings, task tree, evidence, and a per-session `ExecutionBroker` + `ToolCallExecutor`.
+- `core/tool_context.broker_context` routes `run_argv` to the context broker (explicit broker > context broker > default broker), so scope is enforced per engagement.
+- Legacy module-level names (`chat_history`, `_findings_log`, …) resolve to the default context via PEP 562 `__getattr__`; `core/storage.py` provides atomic writes, locked JSONL appends, and 0700 directories.
+- History is token-bounded (`_trim_history`), the audit WAL rotates at a size cap, and sessions are pruned at `LONLY_MAX_SESSIONS`.
 
 ## Debt policy (enforced by eval/)
 
