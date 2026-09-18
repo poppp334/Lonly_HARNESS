@@ -29,7 +29,13 @@ class TestRedTeamHarness(unittest.TestCase):
 
     def test_r1_shell_metacharacter_injection_resilience(self):
         """R1: Passing shell metacharacters (; && || ` $()) does NOT trigger secondary command execution."""
-        broker = ExecutionBroker()
+        from core.policy import CapabilityManifest, CapabilityPolicy, RiskClass
+
+        broker = ExecutionBroker(
+            capability_policy=CapabilityPolicy({
+                "echo": CapabilityManifest("echo_probe", "echo", risk_class=RiskClass.LOW),
+            })
+        )
         # Attempt command injection via argv argument
         # With shell=False, echo will literally print the string '; echo INJECTED', not run a second command
         res = broker.execute(
@@ -816,6 +822,323 @@ class TestRedTeamHarness(unittest.TestCase):
         finally:
             ALLOWED_TARGETS.clear()
 
+    def test_r40_broker_applies_sandbox_preexec(self):
+        """R40: Broker wires SandboxManager preexec_fn and manifest profile into subprocess.run."""
+        import subprocess as sp
+        from core.audit import AuditLedger
+        from core.policy import CapabilityManifest, CapabilityPolicy, RiskClass
+
+        policy = CapabilityPolicy({
+            "probe_tool": CapabilityManifest(
+                "probe_tool", "python3", risk_class=RiskClass.LOW, sandbox_profile="restricted",
+            ),
+        })
+        broker = ExecutionBroker(
+            policy=TargetPolicy(allowed_targets=["127.0.0.1"]),
+            capability_policy=policy,
+            audit_ledger=AuditLedger(),
+        )
+        captured: dict = {}
+        fake = sp.CompletedProcess(args=["python3"], returncode=0, stdout="ok", stderr="")
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["kwargs"] = kwargs
+            return fake
+
+        with patch("core.broker.subprocess.run", side_effect=fake_run):
+            res = broker.execute("probe_tool", ["-c", "print(1)"], target="127.0.0.1", timeout=5)
+
+        self.assertEqual(res.exit_code, 0)
+        self.assertTrue(callable(captured["kwargs"].get("preexec_fn")))
+        self.assertFalse(captured["kwargs"].get("shell", False))
+        self.assertIn("python3", captured["cmd"][0])
+
+    def test_r41_broker_audit_lifecycle_events(self):
+        """R41: Broker records BROKER_CALL/PROCESS_START/PROCESS_END, DECISION on deny, APPROVAL on approval."""
+        import subprocess as sp
+        from core.audit import AuditEventType, AuditLedger
+        from core.policy import CapabilityPolicy
+
+        fake = sp.CompletedProcess(args=["python3"], returncode=0, stdout="ok", stderr="")
+
+        from core.policy import CapabilityManifest, RiskClass
+
+        probe_policy = CapabilityPolicy()
+        probe_policy.register(
+            CapabilityManifest("python3_probe", "python3", risk_class=RiskClass.MEDIUM)
+        )
+
+        ledger = AuditLedger()
+        broker = ExecutionBroker(
+            policy=TargetPolicy(allowed_targets=["127.0.0.1"]),
+            capability_policy=probe_policy,
+            audit_ledger=ledger,
+        )
+        with patch("core.broker.subprocess.run", return_value=fake):
+            broker.execute("python3", ["-c", "print(1)"], target="127.0.0.1", timeout=5)
+        types = [e.event_type for e in ledger.events]
+        self.assertIn(AuditEventType.BROKER_CALL.value, types)
+        self.assertIn(AuditEventType.PROCESS_START.value, types)
+        self.assertIn(AuditEventType.PROCESS_END.value, types)
+
+        # Denied capability -> DECISION(allowed=False), no process events
+        ledger2 = AuditLedger()
+        broker2 = ExecutionBroker(
+            policy=TargetPolicy(allowed_targets=["127.0.0.1"]),
+            capability_policy=CapabilityPolicy(),
+            audit_ledger=ledger2,
+        )
+        denied = broker2.execute("shell_exec", ["id"], target="127.0.0.1", approved=False)
+        self.assertEqual(denied.exit_code, 126)
+        decisions = [e for e in ledger2.events if e.event_type == AuditEventType.DECISION.value]
+        self.assertTrue(any(e.payload.get("allowed") is False for e in decisions))
+
+        # Approved high-risk capability -> APPROVAL event recorded
+        ledger3 = AuditLedger()
+        broker3 = ExecutionBroker(
+            policy=TargetPolicy(allowed_targets=["127.0.0.1"]),
+            capability_policy=CapabilityPolicy(),
+            audit_ledger=ledger3,
+        )
+        with patch("core.broker.subprocess.run", return_value=fake):
+            broker3.execute("shell_exec", ["id"], target="127.0.0.1", approved=True)
+        types3 = [e.event_type for e in ledger3.events]
+        self.assertIn(AuditEventType.APPROVAL.value, types3)
+
+    def test_r42_default_audit_ledger_is_persisted(self):
+        """R42: DEFAULT_AUDIT_LEDGER resolves to a persistent WAL path (env-overridable)."""
+        from core import audit
+
+        self.assertIsNotNone(audit.DEFAULT_AUDIT_LEDGER.ledger_path)
+        self.assertTrue(audit.DEFAULT_AUDIT_LEDGER.ledger_path.endswith("audit.wal"))
+
+    def test_r43_approval_propagates_to_broker_executor(self):
+        """R43: ToolCallExecutor propagates operator approval to run_argv/broker via tool context."""
+        from core.tool_dispatch import ToolCallExecutor
+        from tools import base as tb
+
+        seen: list[bool] = []
+
+        def fake_exec(executable, argv, target=None, timeout=120, max_output=4000,
+                      approved=False, broker=None, capability=None, **kwargs):
+            seen.append(approved)
+            return "ok"
+
+        tb.set_executor(fake_exec)
+        try:
+            executor = ToolCallExecutor(invoker=lambda n, a: tb.run_argv("hydra", ["-h"]))
+            executor.execute("hydra_brute_force", {"target": "127.0.0.1"}, approved=True)
+            executor.execute("hydra_brute_force", {"target": "127.0.0.1"})
+        finally:
+            tb.reset_executor()
+
+        self.assertEqual(seen, [True, False])
+
+    def test_r44_capability_id_authorization(self):
+        """R44: Broker authorizes by capability id; 'sh' is not conflated with shell_exec."""
+        import subprocess as sp
+        from core.audit import AuditLedger
+        from core.policy import CapabilityPolicy
+
+        fake = sp.CompletedProcess(args=["sh"], returncode=0, stdout="ok", stderr="")
+        broker = ExecutionBroker(
+            policy=TargetPolicy(allowed_targets=["127.0.0.1"]),
+            capability_policy=CapabilityPolicy(),
+            audit_ledger=AuditLedger(),
+        )
+        with patch("core.broker.subprocess.run", return_value=fake):
+            # LinPEAS executes via 'sh' but is authorized as its own capability
+            res = broker.execute(
+                "sh", ["/tmp/linpeas.sh", "-s", "-q"], target="127.0.0.1",
+                capability="linpeas_privilege_escalation_scan",
+            )
+            self.assertEqual(res.exit_code, 0)
+
+            # Bare 'sh' maps to the CRITICAL shell_exec manifest and requires approval
+            denied = broker.execute("sh", ["-c", "id"], target="127.0.0.1")
+            self.assertEqual(denied.exit_code, 126)
+            self.assertIn("[APPROVAL REQUIRED]", denied.output)
+
+            # Explicit shell_exec capability with approval executes
+            approved = broker.execute(
+                "sh", ["-c", "id"], target="127.0.0.1",
+                capability="shell_exec", approved=True,
+            )
+            self.assertEqual(approved.exit_code, 0)
+
+        # nxc is an alias for the crackmapexec manifest (NetExec)
+        self.assertIsNotNone(CapabilityPolicy().get("nxc"))
+
+    def test_r45_cidr_scope_soundness_and_mask_preservation(self):
+        """R45: A CIDR request is in scope only if it is contained in an allowed network."""
+        from tools.base import clean_target
+
+        policy = TargetPolicy(allowed_targets=["10.0.0.0/24", "2001:db8::/32"])
+        self.assertTrue(policy.is_in_scope("10.0.0.5"))
+        self.assertTrue(policy.is_in_scope("10.0.0.0/24"))
+        self.assertTrue(policy.is_in_scope("10.0.0.5/32"))
+        self.assertFalse(policy.is_in_scope("10.0.0.0/8"))
+        self.assertFalse(policy.is_in_scope("10.0.0.0/16"))
+        self.assertTrue(policy.is_in_scope("2001:db8::/64"))
+        self.assertFalse(policy.is_in_scope("2001:db8::/16"))
+
+        self.assertEqual(clean_target("http://10.0.0.0/24"), "10.0.0.0/24")
+        self.assertEqual(clean_target("10.0.0.5/admin"), "10.0.0.5")
+        self.assertEqual(clean_target("2001:db8::/64"), "2001:db8::/64")
+
+        self.assertFalse(policy.resolve_destination("10.0.0.0/16").is_authorized)
+        self.assertTrue(policy.resolve_destination("10.0.0.0/24").is_authorized)
+
+    def test_r46_denied_and_nonzero_outputs_classified_as_failures(self):
+        """R46: Policy denials and empty nonzero exits are failures, from one pattern source."""
+        import subprocess as sp
+        from core import parser as P
+        from core.audit import AuditLedger
+        from core.policy import CapabilityPolicy
+        from tools import base as tb
+
+        self.assertTrue(P.is_tool_failure("[SCOPE BLOCKED] out of scope"))
+        self.assertTrue(P.is_tool_failure("[APPROVAL REQUIRED] capability 'shell_exec'"))
+        self.assertTrue(P.is_tool_failure("[POLICY BLOCKED] capability denied"))
+        self.assertEqual(set(tb.TOOL_FAILURE_PATTERNS), set(P.TOOL_FAILURE_PATTERNS))
+
+        fake = sp.CompletedProcess(args=["curl"], returncode=1, stdout="", stderr="")
+        broker = ExecutionBroker(
+            policy=TargetPolicy(allowed_targets=["127.0.0.1"]),
+            capability_policy=CapabilityPolicy(),
+            audit_ledger=AuditLedger(),
+        )
+        with patch("core.broker.subprocess.run", return_value=fake):
+            res = broker.execute("curl", ["-s", "http://127.0.0.1"], target="127.0.0.1")
+        self.assertEqual(res.exit_code, 1)
+        self.assertTrue(P.is_tool_failure(res.output))
+        self.assertNotIn("successfully", res.output)
+
+    def test_r47_recon_default_argument_contracts(self):
+        """R47: Nmap numeric ports and masscan defaults produce valid argv."""
+        from tools import base as tb
+        from tools.recon import masscan_port_scan, nmap_security_scan
+
+        calls: list[tuple[str, list[str]]] = []
+
+        def fake_exec(executable, argv, **kwargs):
+            calls.append((executable, list(argv)))
+            return "ok"
+
+        tb.set_executor(fake_exec)
+        try:
+            nmap_security_scan.invoke({"target": "127.0.0.1", "ports": "80,443"})
+            masscan_port_scan.invoke({"target": "127.0.0.1"})
+        finally:
+            tb.reset_executor()
+
+        nmap_argv = calls[0][1]
+        self.assertIn("-p", nmap_argv)
+        self.assertIn("80,443", nmap_argv)
+        mass_argv = calls[1][1]
+        self.assertFalse(any("top" in a.lower() for a in mass_argv), mass_argv)
+        self.assertTrue(any(a.startswith("-p") for a in mass_argv), mass_argv)
+
+    def test_r48_unknown_capabilities_fail_closed(self):
+        """R48: Unmanifested capabilities are denied; production binaries stay manifested."""
+        from core.policy import CapabilityPolicy
+
+        policy = CapabilityPolicy()
+        allowed, reason = policy.authorize("definitely_not_a_manifested_tool")
+        self.assertFalse(allowed)
+        self.assertIn("[POLICY BLOCKED]", reason)
+
+        for name in ("nmap", "curl", "ssh", "nxc", "impacket_tool_execute", "shell_exec"):
+            self.assertIsNotNone(policy.get(name), name)
+        self.assertTrue(policy.authorize("nxc", has_operator_approval=True)[0])
+
+    def test_r49_audit_key_is_not_hardcoded(self):
+        """R49: Audit key comes from env/keyfile (0600), never a hardcoded default."""
+        import stat
+        import tempfile
+        from core import audit
+
+        with tempfile.TemporaryDirectory() as tmp:
+            keyfile = os.path.join(tmp, "audit.key")
+            prev_key = os.environ.pop("LONLY_AUDIT_KEY", None)
+            os.environ["LONLY_AUDIT_KEY_FILE"] = keyfile
+            try:
+                key1 = audit.resolve_audit_key()
+                key2 = audit.resolve_audit_key()
+                self.assertTrue(key1 and key1 != "LONLY-AUDIT-ROOT-KEY")
+                self.assertEqual(key1, key2)
+                self.assertTrue(os.path.exists(keyfile))
+                self.assertEqual(stat.S_IMODE(os.stat(keyfile).st_mode), 0o600)
+            finally:
+                os.environ.pop("LONLY_AUDIT_KEY_FILE", None)
+                if prev_key is not None:
+                    os.environ["LONLY_AUDIT_KEY"] = prev_key
+
+    def test_r50_impacket_binary_allowlist(self):
+        """R50: Impacket executes only allowlisted tools and passes its capability id."""
+        from tools import base as tb
+        from tools.infra import impacket_tool_execute
+
+        calls: list[tuple[str, str]] = []
+
+        def fake_exec(executable, argv, **kwargs):
+            calls.append((executable, kwargs.get("capability", "")))
+            return "ok"
+
+        tb.set_executor(fake_exec)
+        try:
+            rejected = impacket_tool_execute.invoke({
+                "tool_name": "/tmp/evil", "target": "127.0.0.1",
+                "connection_string": "lab/user:pass",
+            })
+            self.assertIn("[POLICY BLOCKED]", rejected)
+            self.assertEqual(calls, [])
+            ok = impacket_tool_execute.invoke({
+                "tool_name": "GetNPUsers.py", "target": "127.0.0.1",
+                "connection_string": "lab/user:pass",
+            })
+        finally:
+            tb.reset_executor()
+
+        self.assertEqual(ok, "ok")
+        self.assertEqual(calls[0][0], "GetNPUsers.py")
+        self.assertEqual(calls[0][1], "impacket_tool_execute")
+
+    def test_r51_tool_capability_wiring(self):
+        """R51: Identity-colliding wrappers pass explicit capability ids to the broker."""
+        import tempfile
+        from tools import base as tb
+        from tools.creds import crackmapexec, hydra_brute_force, metasploit_auxiliary_scanner
+        from tools.infra import linpeas_privilege_escalation_scan, shell_exec
+
+        calls: list[str] = []
+
+        def fake_exec(executable, argv, **kwargs):
+            calls.append(kwargs.get("capability", ""))
+            return "ok"
+
+        tb.set_executor(fake_exec)
+        try:
+            shell_exec.invoke({"cmd": "echo hi"})
+            crackmapexec.invoke({"target": "127.0.0.1"})
+            hydra_brute_force.invoke({"target": "127.0.0.1", "service": "ssh"})
+            metasploit_auxiliary_scanner.invoke({
+                "module": "auxiliary/scanner/portscan/tcp", "rhosts": "127.0.0.1",
+            })
+            with tempfile.NamedTemporaryFile("w", suffix=".sh") as fh:
+                linpeas_privilege_escalation_scan.invoke({"script_path": fh.name})
+        finally:
+            tb.reset_executor()
+
+        self.assertEqual(calls, [
+            "shell_exec",
+            "crackmapexec",
+            "hydra_brute_force",
+            "metasploit_auxiliary_scanner",
+            "linpeas_privilege_escalation_scan",
+        ])
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -864,6 +1187,18 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R37 Target anchor extraction and placeholder sanitization", True, ""),
         ("R38 CLI reader arrow history and autocompletion", True, ""),
         ("R39 Broker dynamic scope synchronization", True, ""),
+        ("R40 Broker sandbox preexec wiring", True, ""),
+        ("R41 Broker audit lifecycle events", True, ""),
+        ("R42 Default audit ledger persistence", True, ""),
+        ("R43 Approval propagation through executor to broker", True, ""),
+        ("R44 Capability-id authorization (sh/linpeas/shell_exec separation)", True, ""),
+        ("R45 CIDR scope soundness and mask preservation", True, ""),
+        ("R46 Denial/nonzero classification from a single pattern source", True, ""),
+        ("R47 Recon default argument contracts (nmap/masscan)", True, ""),
+        ("R48 Unknown capabilities fail closed", True, ""),
+        ("R49 Audit key from env/keyfile (0600), not hardcoded", True, ""),
+        ("R50 Impacket binary allowlist and capability wiring", True, ""),
+        ("R51 Tool-level capability wiring for identity collisions", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

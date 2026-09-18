@@ -13,6 +13,7 @@ import io
 import os
 import sys
 import unittest
+from contextlib import contextmanager
 from unittest.mock import patch, MagicMock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,6 +21,17 @@ sys.path.insert(0, ROOT)
 
 import pentest_agent as pa
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from tools import base as tools_base
+
+
+@contextmanager
+def fake_tool_executor(output: str = "Open 127.0.0.1:80"):
+    """Install a deterministic tool executor so no real command runs."""
+    tools_base.set_executor(lambda executable, argv, **kwargs: output)
+    try:
+        yield
+    finally:
+        tools_base.reset_executor()
 
 
 class TestCLIEdgeCases(unittest.TestCase):
@@ -27,6 +39,9 @@ class TestCLIEdgeCases(unittest.TestCase):
         pa.chat_history.clear()
         pa._findings_log = pa.FindingsLog()
         pa._task_tree = pa.TaskTree()
+        pa._evidence_graph = pa.EvidenceGraph()
+        if hasattr(pa, "_rebind_tool_executor"):
+            pa._rebind_tool_executor()
         pa._task_number = 1
         pa._carryover_event_log.clear()
         pa._in_task_risk_events.clear()
@@ -60,7 +75,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         
         with patch("pentest_agent.llm", mock_llm), \
              patch("builtins.input", return_value="n"), \
-             patch("pentest_agent.run_argv", return_value="root"):
+             fake_tool_executor("root"):
             out = pa.run_react_agent("test shell_exec deny")
             self.assertIn("Denied and stopped", out)
             # Confirm denial was passed back to LLM
@@ -77,7 +92,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         ]
         with patch("pentest_agent.llm", mock_llm), \
              patch("builtins.input", return_value="y"), \
-             patch("pentest_agent.run_argv", return_value="root"):
+             fake_tool_executor("root"):
             out = pa.run_react_agent("test shell_exec allow")
             self.assertIn("Command executed successfully", out)
 
@@ -90,7 +105,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         with patch("pentest_agent.llm", mock_llm), \
              patch("pentest_agent.RISK_CHECKPOINT_THRESHOLD", 1), \
              patch("builtins.input", return_value="s"), \
-             patch("pentest_agent.run_argv", return_value="Open 127.0.0.1:80"):
+             fake_tool_executor("Open 127.0.0.1:80"):
             out = pa.run_react_agent("test checkpoint stop")
             self.assertIn("[CHECKPOINT STOP]", out)
 
@@ -101,7 +116,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         with patch("pentest_agent.llm", mock_llm), \
              patch("pentest_agent.RISK_CHECKPOINT_THRESHOLD", 1), \
              patch("builtins.input", return_value="r"), \
-             patch("pentest_agent.run_argv", return_value="Open 127.0.0.1:80"):
+             fake_tool_executor("Open 127.0.0.1:80"):
             init_task = pa._task_number
             out = pa.run_react_agent("test checkpoint redirect")
             self.assertIn("[CHECKPOINT REDIRECT]", out)
@@ -130,7 +145,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         ]
         with patch("pentest_agent.llm", mock_llm), \
              patch("builtins.input", return_value="y"), \
-             patch("pentest_agent.run_argv", return_value="Scanned 1 of 1 hosts (00% complete)\nAuxiliary module execution completed"):
+             fake_tool_executor("Scanned 1 of 1 hosts (00% complete)\nAuxiliary module execution completed"):
             out = pa.run_react_agent("test overclaim")
             self.assertIn("[POSSIBLE OVERCLAIM]", out)
 
@@ -142,6 +157,52 @@ class TestCLIEdgeCases(unittest.TestCase):
         with patch("pentest_agent.llm", mock_llm):
             out = pa.run_react_agent(thai_query)
             self.assertIn("สแกนเสร็จสิ้น", out)
+
+    def test_e6_scope_gate_blocks_before_invoke(self):
+        """E6: Out-of-scope tool proposals are blocked before the executor runs."""
+        pa.ALLOWED_TARGETS.clear()
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = AIMessage(
+            content='Action: nmap_security_scan\nAction Input: {"target": "203.0.113.7"}'
+        )
+        invoked: list = []
+        tools_base.set_executor(lambda *a, **k: invoked.append(a) or "should not run")
+        try:
+            with patch("pentest_agent.llm", mock_llm), patch("builtins.input", return_value="n"):
+                out = pa.run_react_agent("scan 203.0.113.7")
+        finally:
+            tools_base.reset_executor()
+            pa.ALLOWED_TARGETS.clear()
+        self.assertIn("outside authorized scope", out)
+        self.assertEqual(invoked, [])
+
+    def test_e7_evidence_gate_and_provenance_fencing(self):
+        """E7: Executed findings land in the evidence DAG and observations are fenced."""
+        mock_llm = MagicMock()
+        mock_llm.invoke.side_effect = [
+            AIMessage(content='Action: nmap_security_scan\nAction Input: {"target": "127.0.0.1"}'),
+            AIMessage(content="Final Answer: Port 80 is open on 127.0.0.1"),
+        ]
+        with patch("pentest_agent.llm", mock_llm), fake_tool_executor("80/tcp open http"):
+            out = pa.run_react_agent("scan loopback")
+        self.assertIn("[EVIDENCE LOG]", out)
+        self.assertGreater(pa._evidence_graph.node_count, 0)
+        self.assertTrue(any("<untrusted_observation" in m.content for m in pa.chat_history))
+
+    def test_e8_prompt_state_injection(self):
+        """E8: Each turn injects task-tree and findings state outside the chat window."""
+        captured: dict = {}
+        mock_llm = MagicMock()
+
+        def capture_invoke(messages, *args, **kwargs):
+            captured["system"] = messages[0].content
+            return AIMessage(content="Final Answer: ok")
+
+        mock_llm.invoke.side_effect = capture_invoke
+        with patch("pentest_agent.llm", mock_llm):
+            pa.run_react_agent("hello")
+        self.assertIn("[CURRENT SUB-GOAL]", captured.get("system", ""))
+        self.assertIn("[FINDINGS SO FAR]", captured.get("system", ""))
 
 
 def run_track_e_fixtures() -> list[tuple[str, bool, str]]:
@@ -155,6 +216,9 @@ def run_track_e_fixtures() -> list[tuple[str, bool, str]]:
         ("E3 Risk budget checkpoint stop & redirect", True, ""),
         ("E4 Fabrication & overclaim interception", True, ""),
         ("E5 Unicode & Thai input resilience", True, ""),
+        ("E6 Scope gate blocks before invoke", True, ""),
+        ("E7 Evidence gate & provenance fencing", True, ""),
+        ("E8 Prompt state injection", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

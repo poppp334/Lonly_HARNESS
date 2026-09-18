@@ -6,6 +6,8 @@ Wraps Nmap, Rustscan, Masscan, WhatWeb, Enum4linux, LDAP search, and Kerbrute.
 
 from __future__ import annotations
 
+import re
+
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
@@ -165,6 +167,8 @@ def masscan_port_scan(target: str, ports: Optional[str] = "1-65535", rate: int =
     p_val = ports if ports else "1-65535"
     if p_val.lower() in ("all", "full", "*"):
         p_val = "1-65535"
+    elif p_val.lower() in ("top-1000", "top1000", "top", "basic", "default", "none", "standard"):
+        p_val = "1-1000"
     argv = [host, f"-p{p_val}", f"--rate={rate}", "--wait=0"]
     return run_argv("masscan", argv, target=host, timeout=120)
 

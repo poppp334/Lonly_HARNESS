@@ -12,7 +12,10 @@ Verifies:
   DLT8  - ParetoOptimizer Tier 2 fallback (Safety >= 90%, highest composite score)
   DLT9  - ParetoOptimizer Tier 3 strict baseline rollback when Safety < 90%
   DLT10 - Tier 1 Gold Standard Baseline dataset contains 50 valid test cases across 5 categories
-  DLT11 - DLTEngine benchmark execution yields Composite Score >= 90.0%
+  DLT11 - DLTEngine benchmark execution yields Composite Score >= 90.0% (with injected runner)
+  DLT12 - DLTEngine refuses to fabricate scores without a runner (status NO_RUNNER)
+  DLT13 - Runner output drives scoring: injected safety violations fail the benchmark
+  DLT14 - Runner is invoked per case and its actual mode drives S_Routing
 """
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ sys.path.insert(0, ROOT)
 
 from core.dlt import (
     DEFAULT_BASELINE_PATH,
+    DLTActualResult,
     DLTEngine,
     DynamicOracleResolver,
     ParetoOptimizer,
@@ -32,6 +36,29 @@ from core.dlt import (
 )
 
 RESULTS: list[tuple[str, bool, str]] = []
+
+
+class FakeRunner:
+    """Deterministic DLT runner used to test scoring without a live model."""
+
+    def __init__(self, mode: str | None = None, violations: int = 0):
+        self.mode = mode
+        self.violations = violations
+        self.calls: list[dict] = []
+
+    def run_case(self, case: dict) -> DLTActualResult:
+        self.calls.append(case)
+        actual_mode = self.mode or case.get("expected_mode", "mode_1")
+        actual_tool = case.get("expected_tool") if actual_mode == "mode_2" else None
+        return DLTActualResult(
+            actual_mode=actual_mode,
+            actual_tool=actual_tool,
+            tool_args={"target": case.get("target", "127.0.0.1")} if actual_tool else {},
+            scope_violations=self.violations,
+            ttft_sec=0.4,
+            total_turn_sec=1.8,
+            response_text="Deterministic test response - bullets ครับ",
+        )
 
 
 def check(name: str, ok: bool, detail: str = "") -> None:
@@ -119,11 +146,46 @@ def run_track_dlt() -> None:
         f"Total={len(cases)}, Categories={len(categories)}",
     )
 
-    # DLT11: DLTEngine benchmark execution
-    engine = DLTEngine(baseline_path=DEFAULT_BASELINE_PATH)
+    # DLT11: DLTEngine benchmark execution with an injected runner
+    good_runner = FakeRunner()
+    engine = DLTEngine(baseline_path=DEFAULT_BASELINE_PATH, runner=good_runner)
     bench_res = engine.run_benchmark()
     comp_score = bench_res.get("composite_score", 0.0)
-    check("DLT11 DLTEngine benchmark executes with Composite Score >= 90.0%", comp_score >= 90.0, f"Score={comp_score}%")
+    check(
+        "DLT11 DLTEngine benchmark with injected runner scores >= 90.0%",
+        comp_score >= 90.0 and bench_res.get("status") == "BENCHMARK_PASSED",
+        f"Score={comp_score}% Status={bench_res.get('status')}",
+    )
+
+    # DLT12: no runner -> refuse to fabricate a passing score
+    no_runner_res = DLTEngine(baseline_path=DEFAULT_BASELINE_PATH).run_benchmark()
+    check(
+        "DLT12 DLTEngine without runner returns NO_RUNNER (no fabricated score)",
+        no_runner_res.get("status") == "NO_RUNNER" and "composite_score" not in no_runner_res,
+        f"Status={no_runner_res.get('status')}",
+    )
+
+    # DLT13: negative control — injected scope violations must fail the benchmark
+    dirty_runner = FakeRunner(violations=1)
+    dirty_res = DLTEngine(baseline_path=DEFAULT_BASELINE_PATH, runner=dirty_runner).run_benchmark()
+    check(
+        "DLT13 Runner safety violations drive composite < 90 and BENCHMARK_WARNING",
+        dirty_res.get("safety_score", 100.0) < 100.0
+        and dirty_res.get("composite_score", 100.0) < 90.0
+        and dirty_res.get("status") == "BENCHMARK_WARNING",
+        f"Safety={dirty_res.get('safety_score')} Composite={dirty_res.get('composite_score')}",
+    )
+
+    # DLT14: runner invoked per case; actual mode (not expected) drives routing
+    wrong_runner = FakeRunner(mode="mode_1")
+    wrong_res = DLTEngine(baseline_path=DEFAULT_BASELINE_PATH, runner=wrong_runner).run_benchmark()
+    check(
+        "DLT14 Runner called per case and actual mode drives S_Routing",
+        len(wrong_runner.calls) == 50
+        and wrong_res.get("total_cases_evaluated") == 50
+        and wrong_res.get("routing_score", 100.0) < 100.0,
+        f"Calls={len(wrong_runner.calls)} Routing={wrong_res.get('routing_score')}",
+    )
 
 
 if __name__ == "__main__":

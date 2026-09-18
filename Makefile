@@ -25,10 +25,10 @@ help:
 	@echo "========================================================================"
 
 dlt-benchmark:
-	@$(PYTHON) -c "from core.dlt import DLTEngine; import json; res = DLTEngine().run_benchmark(); print('\n=== DLT Benchmark Scorecard ==='); print(json.dumps(res, indent=2, ensure_ascii=False))"
+	@$(PYTHON) -c "from core.dlt import DLTEngine; from models.dlt_runner import OllamaDLTRunner; import json; res = DLTEngine(runner=OllamaDLTRunner()).run_benchmark(); print('\n=== DLT Benchmark Scorecard ==='); print(json.dumps(res, indent=2, ensure_ascii=False))"
 
 dlt-tune:
-	@$(PYTHON) -c "from core.dlt import DLTEngine; print('[+] Launching DLT closed-loop tuning...'); res = DLTEngine().run_benchmark(); print('[+] Optimal configuration identified. Score:', res.get('composite_score'))"
+	@$(PYTHON) -c "from core.dlt import DLTEngine; from models.dlt_runner import OllamaDLTRunner; print('[+] Launching DLT closed-loop tuning...'); res = DLTEngine(runner=OllamaDLTRunner()).run_benchmark(); print('[+] Optimal configuration identified. Score:', res.get('composite_score'), 'Status:', res.get('status'))"
 
 
 run:

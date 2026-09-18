@@ -116,13 +116,60 @@ def linpeas_privilege_escalation_scan(script_path: Optional[str] = None) -> str:
     )
     if not (os.path.exists(target_script) and os.path.isfile(target_script)):
         return f"[TOOL ERROR] linpeas.sh script not found at {target_script}. Install with: sudo apt install peass-ng"
-    return run_argv("sh", [target_script, "-s", "-q"], timeout=240, max_output=5000)
+    return run_argv(
+        "sh",
+        [target_script, "-s", "-q"],
+        capability="linpeas_privilege_escalation_scan",
+        timeout=240,
+        max_output=5000,
+    )
+
+
+# Impacket tools that may be executed through the wrapper. Anything else is
+# rejected before it can reach the broker.
+IMPACKET_ALLOWED_TOOLS = frozenset({
+    "GetNPUsers.py",
+    "GetUserSPNs.py",
+    "GetADUsers.py",
+    "secretsdump.py",
+    "samrdump.py",
+    "rpcdump.py",
+    "lookupsid.py",
+    "smbclient.py",
+    "psexec.py",
+    "wmiexec.py",
+    "smbexec.py",
+    "atexec.py",
+    "ticketer.py",
+    "goldenPac.py",
+    "ntlmrelayx.py",
+    "findDelegation.py",
+    "GetLAPSPassword.py",
+})
+
+
+def _validate_impacket_tool(tool_name: str) -> str:
+    """Return the canonical allowlisted name or an empty string when rejected."""
+    raw_name = (tool_name or "").strip()
+    if not raw_name or "/" in raw_name or "\\" in raw_name:
+        return ""
+    candidate = raw_name
+    if candidate.startswith("impacket-"):
+        candidate = candidate[len("impacket-"):]
+    if not candidate.endswith(".py"):
+        candidate += ".py"
+    return candidate if candidate in IMPACKET_ALLOWED_TOOLS else ""
 
 
 @tool(args_schema=ImpacketToolInput)
 def impacket_tool_execute(tool_name: str, target: str, connection_string: str, extra_args: str = "") -> str:
     """Execute various Impacket framework tools for Windows/Active Directory assessment."""
     host = clean_target(target)
+    if not _validate_impacket_tool(tool_name):
+        return (
+            f"[POLICY BLOCKED] Impacket tool '{tool_name}' is not on the allowlist. "
+            f"Allowed: {', '.join(sorted(IMPACKET_ALLOWED_TOOLS))}"
+        )
     bin_name = tool_name.strip()
     if not shutil.which(bin_name):
         if shutil.which(f"impacket-{bin_name}"):
@@ -132,7 +179,7 @@ def impacket_tool_execute(tool_name: str, target: str, connection_string: str, e
     argv = [f"{connection_string}@{host}"]
     if extra_args:
         argv.extend(shlex.split(extra_args))
-    return run_argv(bin_name, argv, target=host, timeout=180)
+    return run_argv(bin_name, argv, target=host, capability="impacket_tool_execute", timeout=180)
 
 
 @tool(args_schema=ShellExecInput)
@@ -145,7 +192,13 @@ def shell_exec(cmd: str, timeout: int = 60) -> str:
     parts = shlex.split(cmd.strip())
     if not parts:
         return "[ERROR] Empty command string."
-    return run_argv(parts[0], parts[1:], timeout=safe_timeout, max_output=3000)
+    return run_argv(
+        parts[0],
+        parts[1:],
+        capability="shell_exec",
+        timeout=safe_timeout,
+        max_output=3000,
+    )
 
 
 @tool(args_schema=CVELookupInput)

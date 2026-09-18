@@ -13,11 +13,15 @@ import json
 import re
 from typing import Any, Optional
 
-# Patterns that unambiguously indicate a tool call failed.
+# Patterns that unambiguously indicate a tool call failed. Single source of
+# truth: tools/base.py re-exports this list.
 TOOL_FAILURE_PATTERNS = [
     "[ERROR]",
     "[TIMEOUT]",
     "[TOOL ERROR]",
+    "[SCOPE BLOCKED]",
+    "[APPROVAL REQUIRED]",
+    "[POLICY BLOCKED]",
     "not found",
     "command not found",
     "No such file or directory",

@@ -20,6 +20,7 @@ from typing import Optional
 from core.audit import AuditEventType, AuditLedger, DEFAULT_AUDIT_LEDGER
 from core.guardrails import ALLOWED_TARGETS
 from core.policy import DEFAULT_CAPABILITY_POLICY, CapabilityPolicy, TargetPolicy
+from core.sandbox import SandboxManager, profile_for
 from core.vault import DEFAULT_VAULT, SecretVault
 
 
@@ -71,14 +72,31 @@ class ExecutionBroker:
         approved: bool = False,
         cwd: Optional[str] = None,
         env: Optional[dict[str, str]] = None,
+        capability: Optional[str] = None,
     ) -> ExecutionResult:
-        """Execute a binary with strict argv array (shell=False) under policy authorization."""
+        """Execute a binary with strict argv array (shell=False) under policy authorization.
+
+        `capability` pins the authorization identity when the executable name
+        differs from the capability id (e.g. `sh` for linpeas, `nxc` for
+        crackmapexec, arbitrary binaries for shell_exec).
+        """
         exec_id = f"exec_{uuid.uuid4().hex[:12]}"
         ts = time.strftime("%Y-%m-%dT%H:%M:%S")
+        auth_name = capability or executable
 
         # 1. Capability Policy Authorization Check
-        allowed, reason = self.capability_policy.authorize(executable, has_operator_approval=approved)
+        allowed, reason = self.capability_policy.authorize(auth_name, has_operator_approval=approved)
         if not allowed:
+            self.audit_ledger.record_event(
+                AuditEventType.DECISION,
+                {
+                    "execution_id": exec_id,
+                    "capability": auth_name,
+                    "executable": executable,
+                    "allowed": False,
+                    "reason": reason,
+                },
+            )
             return ExecutionResult(
                 execution_id=exec_id,
                 executable=executable,
@@ -102,6 +120,16 @@ class ExecutionBroker:
                     f"[SCOPE BLOCKED] {resolved_target.rejection_reason or f'Target {target} is out of authorized scope.'} "
                     f"In-scope: {self.policy.allowed_targets or 'loopback only'}."
                 )
+                self.audit_ledger.record_event(
+                    AuditEventType.DECISION,
+                    {
+                        "execution_id": exec_id,
+                        "capability": executable,
+                        "target": target,
+                        "allowed": False,
+                        "reason": blocked_msg,
+                    },
+                )
                 return ExecutionResult(
                     execution_id=exec_id,
                     executable=executable,
@@ -115,8 +143,12 @@ class ExecutionBroker:
                 )
 
         # 3. Binary Path Resolution (resolve capability executable if manifested)
-        manifest = self.capability_policy.get(executable)
-        bin_name = manifest.executable if (manifest and manifest.executable) else executable
+        manifest = self.capability_policy.get(auth_name)
+        if capability:
+            # Explicit capability: execute the requested binary as given.
+            bin_name = executable
+        else:
+            bin_name = manifest.executable if (manifest and manifest.executable) else executable
         venv_bin = os.path.join(sys.prefix, "bin")
         search_path = os.environ.get("PATH", "")
         if venv_bin not in search_path.split(os.pathsep):
@@ -140,13 +172,45 @@ class ExecutionBroker:
         full_cmd = [resolved_bin] + [str(a) for a in argv]
         start_time = time.perf_counter()
 
+        # 3. Sandbox containment profile from the capability manifest
+        sandbox_profile = profile_for(manifest.sandbox_profile if manifest else "default")
+        preexec_fn = SandboxManager.get_preexec_fn(sandbox_profile)
+
+        # 4. Cryptographic audit: pre-execution provenance
+        self.audit_ledger.record_event(
+            AuditEventType.BROKER_CALL,
+            {
+                "execution_id": exec_id,
+                "executable": executable,
+                "capability": auth_name,
+                "argv": [str(a) for a in argv],
+                "target": target,
+                "approved": approved,
+                "sandbox_profile": sandbox_profile.name,
+            },
+        )
+        if approved:
+            self.audit_ledger.record_event(
+                AuditEventType.APPROVAL,
+                {"execution_id": exec_id, "capability": auth_name, "approved": True},
+            )
+        self.audit_ledger.record_event(
+            AuditEventType.PROCESS_START,
+            {
+                "execution_id": exec_id,
+                "executable": executable,
+                "resolved_bin": resolved_bin,
+                "target": target,
+            },
+        )
+
         # Build child execution environment with venv bin
         run_env = dict(env if env is not None else os.environ)
         if venv_bin not in run_env.get("PATH", "").split(os.pathsep):
             run_env["PATH"] = f"{venv_bin}{os.pathsep}{run_env.get('PATH', '')}"
 
         try:
-            # 3. Deterministic execution with shell=False
+            # 5. Deterministic execution with shell=False + sandbox containment
             proc = subprocess.run(
                 full_cmd,
                 shell=False,
@@ -155,6 +219,7 @@ class ExecutionBroker:
                 timeout=timeout,
                 cwd=cwd,
                 env=run_env,
+                preexec_fn=preexec_fn,
             )
             duration_ms = (time.perf_counter() - start_time) * 1000.0
             stdout = proc.stdout or ""
@@ -166,7 +231,15 @@ class ExecutionBroker:
                 combined = combined[:max_output] + "\n... [OUTPUT TRUNCATED]"
                 truncated = True
 
-            raw_final = combined.strip() or "[Command executed successfully with no output]"
+            raw_final = combined.strip()
+            if not raw_final:
+                if proc.returncode != 0:
+                    raw_final = (
+                        f"[ERROR] Command exited with code {proc.returncode} "
+                        f"and produced no output: {' '.join(full_cmd)}"
+                    )
+                else:
+                    raw_final = "[Command executed successfully with no output]"
             final_output = self.vault.redact(raw_final)
             
             res = ExecutionResult(
@@ -216,6 +289,7 @@ class ExecutionBroker:
             {
                 "execution_id": res.execution_id,
                 "executable": res.executable,
+                "capability": auth_name,
                 "exit_code": res.exit_code,
                 "duration_ms": res.duration_ms,
                 "target": target,

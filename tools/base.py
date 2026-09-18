@@ -7,29 +7,41 @@ Stdlib only.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 import shlex
-import sys
-from typing import Optional
+from typing import Callable, Optional
 
-from core.broker import DEFAULT_BROKER, ExecutionBroker, ExecutionResult
+from core.broker import DEFAULT_BROKER, ExecutionBroker
+from core.parser import TOOL_FAILURE_PATTERNS
+from core.tool_context import current_approval
 
-# Patterns that unambiguously indicate a tool call failed.
-TOOL_FAILURE_PATTERNS = [
-    "[ERROR]",
-    "[TIMEOUT]",
-    "[TOOL ERROR]",
-    "[SCOPE BLOCKED]",
-    "not found",
-    "command not found",
-    "No such file or directory",
-    "Permission denied",
-]
+# Explicit injection seam for tests and embedding hosts. When set, run_argv
+# delegates to this executor instead of the broker. This replaces the former
+# implicit sys.modules["pentest_agent"] lookup (adapter -> application
+# dependency).
+_EXECUTOR: Optional[Callable[..., str]] = None
+
+
+def set_executor(fn: Optional[Callable[..., str]]) -> None:
+    """Install a custom executor used instead of the broker (None resets)."""
+    global _EXECUTOR
+    _EXECUTOR = fn
+
+
+def reset_executor() -> None:
+    """Restore broker-backed execution."""
+    global _EXECUTOR
+    _EXECUTOR = None
 
 
 def clean_target(target: str) -> str:
-    """Sanitize target host/IP string by stripping protocols and path segments."""
+    """Sanitize target host/IP string by stripping protocols and path segments.
+
+    CIDR prefixes are preserved: `10.0.0.0/24` is a network target, while
+    `10.0.0.5/admin` is a host with an accidental URL path.
+    """
     if not target:
         return ""
     t = target.strip()
@@ -37,6 +49,15 @@ def clean_target(target: str) -> str:
     t = re.sub(r"^[a-zA-Z0-9+.-]+://", "", t)
     # Strip Windows share prefix \\
     t = t.lstrip("\\/")
+    if "/" in t:
+        head, _, suffix = t.partition("/")
+        suffix_clean = suffix.split("?")[0].split("#")[0].strip()
+        if head.strip() and suffix_clean.isdigit():
+            try:
+                ipaddress.ip_network(f"{head.strip()}/{suffix_clean}", strict=False)
+                return f"{head.strip().lower()}/{suffix_clean}"
+            except ValueError:
+                pass
     # Strip URL paths or queries if accidentally passed to host tools
     t = t.split("/")[0].split("?")[0].strip()
     return t
@@ -67,23 +88,29 @@ def run_argv(
     target: Optional[str] = None,
     timeout: int = 120,
     max_output: int = 4000,
-    approved: bool = False,
+    approved: Optional[bool] = None,
+    capability: Optional[str] = None,
     broker: Optional[ExecutionBroker] = None,
 ) -> str:
     """Execute a tool via structured argv vector without shell (shell=False).
 
-    Delegates to pentest_agent.run_cmd/run_argv if monkeypatched by test harnesses.
+    `approved` defaults to the current tool-call approval context (set by the
+    agent's ToolCallExecutor); `capability` pins the authorization identity for
+    wrappers whose executable name differs from their capability (shell_exec,
+    linpeas, impacket, NetExec).
     """
-    pa = sys.modules.get("pentest_agent")
-    if pa is not None and hasattr(pa, "run_argv"):
-        pa_fn = getattr(pa, "run_argv")
-        if callable(pa_fn) and pa_fn is not run_argv:
-            return pa_fn(executable, argv, target=target, timeout=timeout, max_output=max_output, approved=approved, broker=broker)
-    if pa is not None and hasattr(pa, "run_cmd"):
-        pa_fn = getattr(pa, "run_cmd")
-        if callable(pa_fn) and pa_fn is not run_cmd:
-            cmd_str = f"{executable} {' '.join(str(a) for a in argv)}"
-            return pa_fn(cmd_str, timeout=timeout, max_output=max_output)
+    resolved_approved = current_approval() if approved is None else bool(approved)
+    if _EXECUTOR is not None:
+        return _EXECUTOR(
+            executable,
+            argv,
+            target=target,
+            timeout=timeout,
+            max_output=max_output,
+            approved=resolved_approved,
+            capability=capability,
+            broker=broker,
+        )
 
     b = broker or DEFAULT_BROKER
     res = b.execute(
@@ -92,19 +119,14 @@ def run_argv(
         target=target,
         timeout=timeout,
         max_output=max_output,
-        approved=approved,
+        approved=resolved_approved,
+        capability=capability,
     )
     return res.output
 
 
 def run_cmd(cmd: str, timeout: int = 120, max_output: int = 4000) -> str:
     """Tokenize command string safely with shlex and execute via ExecutionBroker (shell=False)."""
-    pa = sys.modules.get("pentest_agent")
-    if pa is not None and hasattr(pa, "run_cmd"):
-        pa_fn = getattr(pa, "run_cmd")
-        if callable(pa_fn) and pa_fn is not run_cmd:
-            return pa_fn(cmd, timeout=timeout, max_output=max_output)
-
     parts = shlex.split(cmd)
     if not parts:
         return "[ERROR] Empty command"

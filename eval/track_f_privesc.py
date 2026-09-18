@@ -181,6 +181,7 @@ class TestPrivescSpecialistBlock(unittest.TestCase):
                 "whoami",
             ],
             target="10.0.0.5",
+            capability="privesc_specialist_ssh",
             timeout=60,
             max_output=2000,
         )

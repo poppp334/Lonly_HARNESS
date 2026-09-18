@@ -63,7 +63,7 @@ def crackmapexec(target: str, protocol: str = "smb", username: str = "", passwor
             argv.extend(["-p", password])
     if exec_cmd:
         argv.extend(["-x", exec_cmd])
-    return run_argv(bin_name, argv, target=host, timeout=180)
+    return run_argv(bin_name, argv, target=host, capability="crackmapexec", timeout=180)
 
 
 def _map_service_name(service: str) -> str:
@@ -108,7 +108,7 @@ def hydra_brute_force(
         )
         argv.extend(["-P", pl])
     argv.extend(["-t", "4", "-I", host, svc])
-    return run_argv("hydra", argv, target=host, timeout=300)
+    return run_argv("hydra", argv, target=host, capability="hydra_brute_force", timeout=300)
 
 
 @tool(args_schema=MetasploitAuxInput)
@@ -119,7 +119,7 @@ def metasploit_auxiliary_scanner(module: str, rhosts: str) -> str:
     if clean_mod.startswith("auxiliary/"):
         clean_mod = clean_mod[len("auxiliary/"):]
     argv = ["-q", "-x", f"use auxiliary/{clean_mod}; set RHOSTS {host}; run; exit"]
-    return run_argv("msfconsole", argv, target=host, timeout=180, max_output=4000)
+    return run_argv("msfconsole", argv, target=host, capability="metasploit_auxiliary_scanner", timeout=180, max_output=4000)
 
 
 @tool(args_schema=ReverseShellListenerInput)
@@ -130,4 +130,4 @@ def reverse_shell_listener(port: int, listen_timeout: int = 60) -> str:
     except (ValueError, TypeError):
         clean_port = 4444
     argv = ["-lvnp", str(clean_port), "-w", str(listen_timeout)]
-    return run_argv("nc", argv, target="127.0.0.1", timeout=listen_timeout + 10)
+    return run_argv("nc", argv, target="127.0.0.1", capability="reverse_shell_listener", timeout=listen_timeout + 10)

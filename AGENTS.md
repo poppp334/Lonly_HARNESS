@@ -72,7 +72,7 @@ Lonly_HARNESS/
 
 ## 4. Engineering & Contribution Rules
 
-1. **Zero Unverified Commits**: Run `eval/eval_lonly.py` before committing. All 45 checks must pass with exit code 0.
+1. **Zero Unverified Commits**: Run `eval/eval_lonly.py` before committing. All 128 checks must pass with exit code 0.
 2. **Modular Tool Contracts**: Tools must be defined under `tools/` with strict Pydantic `args_schema` and registered in `tools/__init__.py`. Never place raw tool execution code directly in `pentest_agent.py`.
 3. **Target Sanitization**: All host and URL parameters must pass through `clean_target()` or `ensure_url()` in `tools/base.py` to prevent formatting failures.
 4. **Safety Gating**:

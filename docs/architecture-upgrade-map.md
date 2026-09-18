@@ -17,7 +17,7 @@ machine-checkable acceptance test in `eval/`.
                         │  evidence gate                  │       │
                         └──────────────┬──────────────────┼───────┘
                                        │                  │
-                     gemma3:4b         │                  │ privesc phase
+                     phi4-mini         │                  │ privesc phase
                      (generalist)      │                  ▼
                      recon/enum/web/   │        ┌──────────────────────┐
                      report phases     │        │ PrivescSpecialist    │
@@ -55,22 +55,24 @@ machine-checkable acceptance test in `eval/`.
 ### N3 — Task tree + phase routing (`core/state.py`) [Implemented & Verified]
 - Stack of sub-goals: `recon` → `enumerate` → `vuln_check` → `privesc` → `report`.
 - **Phase routing**: `privesc` phase routes dynamically to `PrivescSpecialist` (`models/privesc_protocol.py`).
-- All other phases route to generalist (`gemma3:4b`). Config-driven via `PHASE_MODEL_MAP`.
+- All other phases route to generalist (`phi4-mini`). Config-driven via `PHASE_MODEL_MAP`.
 
 ### N4 — Evidence gate (`core/parser.py`) [Implemented & Verified]
 - Findings reportable only when citing machine-logged command + output proof via `[EVIDENCE LOG]`.
 - Fabrication detector catches uninvoked tools; overclaim detector catches phantom positive findings.
 
 ### N5 — Offline eval harness (`eval/eval_lonly.py`) [Implemented & Verified]
-- **Track D (D1–D20)**: Guardrail and policy assertions.
+- **Track D (D1–D24)**: Guardrail and policy assertions + tool-call gate/executor contracts.
 - **Track P (P1–P9)**: Multi-pass JSON and ReAct parser resilience.
 - **Track M (M1–M3)**: Modular tool registry contracts.
 - **Track C (C1–C4)**: Trajectory loop quality and truncation bounds.
 - **Track A (A1–A3)**: Scenario lifecycle integration.
-- **Track E (E1–E5)**: CLI interaction and edge cases.
-- **Track R (R1–R16)**: Adversarial red team & security boundaries.
+- **Track E (E1–E8)**: CLI interaction and edge cases (scope gate, evidence gate, prompt state).
+- **Track F (F1–F10)**: PrivEsc specialist delegation node.
+- **Track DLT (DLT1–DLT15)**: DLT scoring, runner port, no-fabrication guard, negative control.
+- **Track R (R1–R51)**: Adversarial red team & security boundaries.
 - **Track B (B0)**: Subprocess-isolated tool smokes (24/24).
-- Total: **61/61 checks passing (100%)**.
+- Total: **128/128 checks passing (100%)**.
 
 ### N6 — Specialist verification & flywheel (`models/`) [Implemented & Verified]
 - Specialist protocol adherence (`models/privesc_protocol.py`, `models/smoke_test.py`).
@@ -100,6 +102,22 @@ machine-checkable acceptance test in `eval/`.
 - `ClaimVerifier` automated claim-to-evidence cross-referencing.
 - Automated engagement report generator with SHA-256 cryptographic proof hashes.
 - CLI first-class `report` command.
+
+### N12 — Broker Sandbox & Full Audit Lifecycle (`core/broker.py`, `core/sandbox.py`, `core/audit.py`) [Implemented & Verified]
+- `subprocess.run` receives `SandboxManager.get_preexec_fn()` from the capability manifest's profile (process group, CPU/PID quotas; memory limits opt-in).
+- Broker records `BROKER_CALL`, `PROCESS_START`, `DECISION` (deny), `APPROVAL`, and `PROCESS_END` events in the HMAC-SHA256 WAL.
+- `DEFAULT_AUDIT_LEDGER` persists to `~/.lonly/audit.wal` (override via `LONLY_AUDIT_LEDGER`), verifiable offline via `python -m core.audit verify`.
+
+### N13 — Honest DLT Runner Port (`core/dlt.py`, `models/dlt_runner.py`) [Implemented & Verified]
+- `DLTEngine` scores only injected `DLTRunnerPort` observations; no runner returns `NO_RUNNER` instead of a fabricated score.
+- `OllamaDLTRunner` executes one real streaming model turn per case and measures mode, emitted tool, TTFT, and turn duration.
+- Negative-control test proves runner violations fail the benchmark (composite < 90).
+
+### N14 — Application Ports & Tool Dispatch (`core/ports.py`, `core/tool_dispatch.py`) [Implemented & Verified]
+- `LLMPort`, `ToolInvokerPort`, `EvidenceSinkPort`, `ApprovalPort`, `ScopePort` define the inward-facing boundaries; adapters live at the composition root (`pentest_agent.py`).
+- `evaluate_tool_call()` is a pure gate snapshot (checkpoint/dangerous/confirm/duplicate/scope) over injected ports.
+- `ToolCallExecutor` records command/output/finding evidence through the sink and classifies failures/findings without touching agent globals.
+- `tools/base.py` exposes an explicit `set_executor` seam; the former `sys.modules["pentest_agent"]` upward dependency is removed.
 
 ## Debt policy (enforced by eval/)
 

@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import sys
 import time
 from dataclasses import asdict, dataclass, field
@@ -93,15 +94,58 @@ class AuditLedger:
     def __init__(
         self,
         ledger_path: Optional[str] = None,
-        secret_key: str = "LONLY-AUDIT-ROOT-KEY",
+        secret_key: Optional[str] = None,
     ):
         self.ledger_path = ledger_path
-        self.secret_key = secret_key
+        self._secret_key = secret_key or os.environ.get("LONLY_AUDIT_KEY")
         self.events: list[AuditEvent] = []
         self.latest_hash: str = self.GENESIS_HASH
+        self._chain_error: str = ""
 
         if self.ledger_path and os.path.exists(self.ledger_path):
-            self.load_and_verify()
+            try:
+                valid, reason, _ = self.load_and_verify()
+                if not valid:
+                    self._chain_error = reason
+                    print(
+                        f"[!] Audit ledger failed verification ({reason}); "
+                        f"next append will archive {self.ledger_path} and start a fresh chain.",
+                        file=sys.stderr,
+                    )
+            except Exception as exc:  # unreadable ledger must not break startup
+                self._chain_error = f"unreadable ledger: {exc}"
+                self.events = []
+                self.latest_hash = self.GENESIS_HASH
+                print(
+                    f"[!] Audit ledger unreadable ({exc}); "
+                    f"next append will archive {self.ledger_path} and start a fresh chain.",
+                    file=sys.stderr,
+                )
+
+    @property
+    def secret_key(self) -> str:
+        """Ledger signing key: env override, then 0600 keyfile, else ephemeral."""
+        if self._secret_key is None:
+            self._secret_key = resolve_audit_key()
+        return self._secret_key
+
+    def _archive_ledger(self, reason: str) -> None:
+        """Preserve an unverifiable ledger instead of silently reusing its chain."""
+        archived = ""
+        if self.ledger_path:
+            archived = f"{self.ledger_path}.legacy-{time.strftime('%Y%m%dT%H%M%S')}"
+            try:
+                os.replace(self.ledger_path, archived)
+            except OSError:
+                archived = ""
+        self.events = []
+        self.latest_hash = self.GENESIS_HASH
+        self._chain_error = ""
+        print(
+            f"[!] Audit ledger chain could not be continued ({reason}). "
+            f"Archived to {archived or 'n/a'}; starting a fresh chain.",
+            file=sys.stderr,
+        )
 
     def record_event(
         self,
@@ -110,6 +154,8 @@ class AuditLedger:
         timestamp: Optional[str] = None,
     ) -> AuditEvent:
         """Record and cryptographically seal an event to the ledger."""
+        if self._chain_error:
+            self._archive_ledger(self._chain_error)
         ev_type = event_type.value if isinstance(event_type, AuditEventType) else str(event_type)
         seq = len(self.events)
         ts = timestamp or time.strftime("%Y-%m-%dT%H:%M:%S")
@@ -132,10 +178,13 @@ class AuditLedger:
         self.latest_hash = e_hash
 
         if self.ledger_path:
-            os.makedirs(os.path.dirname(os.path.abspath(self.ledger_path)), exist_ok=True)
-            with open(self.ledger_path, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
-                fh.flush()
+            try:
+                os.makedirs(os.path.dirname(os.path.abspath(self.ledger_path)), exist_ok=True)
+                with open(self.ledger_path, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
+                    fh.flush()
+            except OSError as exc:  # degrade to in-memory WAL; never break execution
+                print(f"[!] Audit ledger write failed ({self.ledger_path}): {exc}", file=sys.stderr)
 
         return event
 
@@ -214,8 +263,46 @@ class AuditLedger:
         return self.latest_hash
 
 
-# Default process ledger instance
-DEFAULT_AUDIT_LEDGER = AuditLedger()
+# Default process ledger instance (persisted write-ahead log)
+DEFAULT_AUDIT_KEY_FILE = os.environ.get(
+    "LONLY_AUDIT_KEY_FILE", os.path.expanduser("~/.lonly/audit.key")
+)
+
+
+def resolve_audit_key(key_file: Optional[str] = None) -> str:
+    """Resolve the ledger signing key.
+
+    Priority: LONLY_AUDIT_KEY env var, then a 0600 key file (generated on
+    first use), then an ephemeral key when the key file is unavailable.
+    """
+    env_key = os.environ.get("LONLY_AUDIT_KEY")
+    if env_key:
+        return env_key
+    path = key_file or os.environ.get("LONLY_AUDIT_KEY_FILE", DEFAULT_AUDIT_KEY_FILE)
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as fh:
+                existing = fh.read().strip()
+            if existing:
+                return existing
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        key = secrets.token_hex(32)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(key)
+        return key
+    except OSError as exc:
+        print(
+            f"[!] Audit key file unavailable ({path}): {exc}; using an ephemeral key",
+            file=sys.stderr,
+        )
+        return secrets.token_hex(32)
+
+
+DEFAULT_AUDIT_LEDGER_PATH = os.environ.get(
+    "LONLY_AUDIT_LEDGER", os.path.expanduser("~/.lonly/audit.wal")
+)
+DEFAULT_AUDIT_LEDGER = AuditLedger(ledger_path=DEFAULT_AUDIT_LEDGER_PATH)
 
 
 def main():
@@ -225,7 +312,7 @@ def main():
         sys.exit(1)
 
     target_path = sys.argv[2]
-    key = "LONLY-AUDIT-ROOT-KEY"
+    key = resolve_audit_key()
     if "--key" in sys.argv:
         k_idx = sys.argv.index("--key")
         if k_idx + 1 < len(sys.argv):

@@ -17,6 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 import pentest_agent as pa  # noqa: E402
+from tools import base as tools_base  # noqa: E402
 
 # Representative in-scope arguments per tool (loopback only — nothing executes)
 ARGS = {
@@ -68,8 +69,7 @@ def main() -> int:
         calls.append((cmd, [], max_output))
         return "FAKE OUTPUT\n" * 100
 
-    pa.run_argv = fake_run_argv
-    pa.run_cmd = fake_run_cmd
+    tools_base.set_executor(fake_run_argv)
     fails = []
     for name in sorted(pa.tool_map.keys()):
         try:

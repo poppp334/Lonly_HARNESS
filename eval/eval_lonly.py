@@ -73,26 +73,100 @@ def track_d() -> None:
         == ["http://x:80"],
     )
 
-    # agent source contract: the loop must actually USE the policy
-    src = open(os.path.join(ROOT, "pentest_agent.py"), encoding="utf-8").read()
-    check("D11 loop enforces DANGEROUS_TOOLS", "if tool_name in DANGEROUS_TOOLS:" in src)
+    # agent contract: deterministic tool-call gate + brokered executor (behavioral)
+    from core.tool_dispatch import ToolCallExecutor, evaluate_tool_call
+
+    class _LoopbackScope:
+        allowed_targets = ["127.0.0.1"]
+
+        @staticmethod
+        def is_in_scope(target: str) -> bool:
+            return G.target_in_scope(target)
+
+    def _eval(name, args, seen=None, risk=0):
+        return evaluate_tool_call(
+            name,
+            args,
+            scope=_LoopbackScope(),
+            seen_calls=seen if seen is not None else set(),
+            risk_score=risk,
+            threshold=G.RISK_CHECKPOINT_THRESHOLD,
+        )
+
+    ev = _eval("sqlmap_vulnerability_assessment", {"target_url": "http://127.0.0.1"})
     check(
-        "D12 loop enforces CONFIRM_REQUIRED_TOOLS",
-        "if tool_name in CONFIRM_REQUIRED_TOOLS:" in src,
+        "D11 gate flags dangerous tools with risk delta",
+        ev.is_dangerous and ev.risk_delta == G.RISK_POINTS["dangerous_tool_blocked"],
+    )
+    ev = _eval("shell_exec", {"cmd": "whoami"})
+    check(
+        "D12 gate flags confirmation-required tools with risk delta",
+        ev.requires_confirmation and ev.risk_delta == G.RISK_POINTS["confirm_required_tool"],
+    )
+    ev = _eval("nmap_security_scan", {"target": "192.168.1.50"})
+    check(
+        "D13 gate detects out-of-scope targets before invoke",
+        ev.out_of_scope == ("192.168.1.50",),
+    )
+    key = ("nmap_security_scan", (("target", "127.0.0.1"),))
+    ev = _eval("nmap_security_scan", {"target": "127.0.0.1"}, seen={key})
+    check("D14 gate detects duplicate calls", ev.is_duplicate and ev.call_key == key)
+    ev = _eval("nmap_security_scan", {"target": "127.0.0.1"}, risk=G.RISK_CHECKPOINT_THRESHOLD)
+    check("D15 gate requires checkpoint at risk threshold", ev.checkpoint_required)
+
+    from core.evidence import EvidenceGraph as _EvidenceGraph
+
+    graph = _EvidenceGraph(run_dir="/tmp/lonly_eval_exec")
+    calls = []
+    executor = ToolCallExecutor(
+        invoker=lambda n, a: calls.append((n, dict(a))) or "80/tcp open http",
+        evidence_sink=graph,
+    )
+    exec_res = executor.execute("nmap_security_scan", {"target": "127.0.0.1"}, target="127.0.0.1")
+    check(
+        "D16 executor records command+output evidence and detects findings",
+        exec_res.has_finding
+        and bool(exec_res.command_sha256)
+        and bool(exec_res.output_sha256)
+        and graph.finding_count >= 1
+        and calls == [("nmap_security_scan", {"target": "127.0.0.1"})],
+    )
+
+    def _boom(_n, _a):
+        raise RuntimeError("boom")
+
+    err_res = ToolCallExecutor(invoker=_boom).execute(
+        "nmap_security_scan", {"target": "127.0.0.1"}
     )
     check(
-        "D13 scope check runs before invoke",
-        "out_of_scope = [" in src and "[SCOPE BLOCKED]" in src,
+        "D21 executor converts invoker exceptions into [TOOL ERROR]",
+        err_res.is_failure and "[TOOL ERROR]" in err_res.output,
+    )
+    trunc_res = ToolCallExecutor(invoker=lambda n, a: "A" * 5000).execute(
+        "nmap_security_scan", {"target": "127.0.0.1"}
     )
     check(
-        "D14 findings log injected per turn",
-        "_findings_log.prompt_block()" in src and "messages[0] = SystemMessage(" in src,
+        "D22 executor truncates inline output but preserves raw output",
+        len(trunc_res.output) < 5000 and len(trunc_res.raw_output) == 5000,
+    )
+    ev = _eval("curl_web_request", {"url": "http://127.0.0.1"})
+    check(
+        "D23 gate allows in-scope low-risk calls",
+        not (
+            ev.checkpoint_required
+            or ev.is_dangerous
+            or ev.requires_confirmation
+            or ev.is_duplicate
+            or ev.out_of_scope
+        ),
+    )
+    nosink = ToolCallExecutor(invoker=lambda n, a: "ok").execute(
+        "curl_web_request", {"url": "http://127.0.0.1"}
     )
     check(
-        "D15 privesc specialist hook wired",
-        "_run_privesc_specialist()" in src and "privesc_attempted" in src,
+        "D24 executor runs without evidence sink",
+        nosink.output == "ok" and nosink.command_sha256 == "" and not nosink.is_failure,
     )
-    check("D16 evidence gate on final answer", "[EVIDENCE LOG]" in src)
 
     # structured state nodes (N2/N3)
     from core.state import DEFAULT_PHASES, FindingsLog, Finding, TaskTree, PHASE_MODEL_MAP

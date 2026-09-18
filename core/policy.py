@@ -61,13 +61,70 @@ class TargetPolicy:
             except ValueError:
                 pass
 
-        # 5. Pure IPv4 or Hostname
+        # 5. CIDR network (IPv4 or IPv6) — preserve the prefix for scope evaluation
+        if "/" in t:
+            head, _, suffix = t.partition("/")
+            suffix_clean = suffix.split("?")[0].split("#")[0].strip()
+            if head.strip() and suffix_clean.isdigit():
+                try:
+                    ipaddress.ip_network(f"{head.strip()}/{suffix_clean}", strict=False)
+                    return f"{head.strip().lower()}/{suffix_clean}", None
+                except ValueError:
+                    pass
+
+        # 6. Pure IPv4 or Hostname
         # Strip any accidental path segments if URL was missing scheme (e.g. 127.0.0.1/admin)
         clean_host = t.split("/")[0].split("?")[0].split("#")[0].strip()
         return clean_host.lower().rstrip("."), None
 
+    @staticmethod
+    def _as_network(target: str):
+        """Return an ip_network when the target is a CIDR literal, else None."""
+        if not target or "/" not in target:
+            return None
+        head, _, suffix = target.strip().partition("/")
+        suffix_clean = suffix.split("?")[0].split("#")[0].strip()
+        if not head.strip() or not suffix_clean.isdigit():
+            return None
+        try:
+            return ipaddress.ip_network(f"{head.strip()}/{suffix_clean}", strict=False)
+        except ValueError:
+            return None
+
+    def _cidr_in_scope(self, requested) -> bool:
+        """A requested network is in scope only when fully contained in an allowed network."""
+        if self.allowed_ports:
+            return False
+        if not self.allowed_targets:
+            return requested.num_addresses == 1 and requested.network_address.is_loopback
+        for entry in self.allowed_targets:
+            entry = entry.strip().lower().rstrip(".")
+            if "/" in entry:
+                try:
+                    allowed_net = ipaddress.ip_network(entry, strict=False)
+                except ValueError:
+                    continue
+                if requested.version == allowed_net.version and requested.subnet_of(allowed_net):
+                    return True
+                continue
+            try:
+                entry_ip = ipaddress.ip_address(entry)
+            except ValueError:
+                continue
+            if (
+                requested.version == entry_ip.version
+                and requested.num_addresses == 1
+                and requested.network_address == entry_ip
+            ):
+                return True
+        return False
+
     def is_in_scope(self, target: str) -> bool:
         """Determines if target is strictly within authorized scope."""
+        requested_net = self._as_network(target)
+        if requested_net is not None:
+            return self._cidr_in_scope(requested_net)
+
         host, port = self.canonicalize_host(target)
         if not host:
             return False
@@ -321,8 +378,10 @@ class CapabilityPolicy:
         """Authorize capability execution against policy."""
         manifest = self.get(capability_name)
         if manifest is None:
-            # If not explicitly manifested, allow default LOW risk or require approval for dangerous names
-            return True, "Default authorized"
+            return False, (
+                f"[POLICY BLOCKED] Unknown capability '{capability_name}' is not manifested; "
+                f"refusing execution (fail-closed)."
+            )
 
         if manifest.is_blocked_by_default:
             return False, f"[POLICY BLOCKED] Capability '{manifest.capability_id}' is permanently blocked by policy."
@@ -358,6 +417,7 @@ class CapabilityPolicy:
             CapabilityManifest("linpeas_privilege_escalation_scan", "linpeas.sh", ActionClass.ENUMERATION, RiskClass.MEDIUM, max_output=5000, risk_points=1),
             CapabilityManifest("reverse_shell_listener", "nc", ActionClass.HOST_EXECUTION, RiskClass.HIGH, network_access=NetworkAccess.INBOUND, risk_points=1),
             CapabilityManifest("impacket_tool_execute", "impacket", ActionClass.AUTHENTICATION_TEST, RiskClass.HIGH, credentials_required=True, risk_points=1),
+            CapabilityManifest("privesc_specialist_ssh", "ssh", ActionClass.AUTHENTICATION_TEST, RiskClass.HIGH, credentials_required=True, risk_points=2, risk_description="SSH execution of the privilege-escalation specialist"),
             CapabilityManifest("curl_web_request", "curl", ActionClass.READ_ONLY, RiskClass.LOW, risk_points=1),
             CapabilityManifest("shell_exec", "sh", ActionClass.HOST_EXECUTION, RiskClass.CRITICAL, requires_approval=True, max_output=3000, risk_points=2, risk_description="arbitrary host system command execution"),
             CapabilityManifest("cve_lookup", "cve_lookup", ActionClass.READ_ONLY, RiskClass.LOW, risk_points=1),
@@ -367,6 +427,11 @@ class CapabilityPolicy:
         for m in defaults:
             manifests[m.capability_id] = m
             manifests[m.executable] = m
+        # Executable aliases: NetExec's nxc binary maps to the crackmapexec capability.
+        for alias, target_id in {"nxc": "crackmapexec"}.items():
+            target_manifest = manifests.get(target_id)
+            if target_manifest is not None:
+                manifests[alias] = target_manifest
         return manifests
 
 
