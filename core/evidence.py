@@ -17,8 +17,9 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 from typing import Optional
 
-
 import uuid
+
+from core.storage import append_jsonl, atomic_write_json, ensure_dir
 
 
 class Provenance(str, Enum):
@@ -95,9 +96,11 @@ class EvidenceGraph:
         self.engagement_id = engagement_id
         self.run_id = run_id or f"run_{uuid.uuid4().hex[:8]}"
         self.run_dir = run_dir or os.path.join(
-            "runs", time.strftime("%Y%m%dT%H%M%S")
+            "runs", f"{time.strftime('%Y%m%dT%H%M%S')}-{os.getpid()}-{uuid.uuid4().hex[:4]}"
         )
+        ensure_dir(self.run_dir)
         self.path = os.path.join(self.run_dir, "evidence_graph.json")
+        self.log_path = os.path.join(self.run_dir, "evidence_graph.jsonl")
 
     def add_artifact(
         self,
@@ -157,6 +160,10 @@ class EvidenceGraph:
         if sha not in self._nodes:
             self._nodes[sha] = node
             self._tool_chains.setdefault(source_tool, []).append(sha)
+            try:
+                append_jsonl(self.log_path, node.to_dict())
+            except OSError:
+                pass  # in-memory graph remains authoritative if disk is unavailable
 
         return node
 
@@ -318,8 +325,7 @@ class EvidenceGraph:
             },
         }
         os.makedirs(self.run_dir, exist_ok=True)
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False, indent=2)
+        atomic_write_json(self.path, data)
 
     @property
     def node_count(self) -> int:

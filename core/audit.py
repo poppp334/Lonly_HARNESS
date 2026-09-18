@@ -15,10 +15,13 @@ import json
 import os
 import secrets
 import sys
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Optional
+
+from core.storage import file_lock
 
 
 class AuditEventType(str, Enum):
@@ -95,32 +98,80 @@ class AuditLedger:
         self,
         ledger_path: Optional[str] = None,
         secret_key: Optional[str] = None,
+        lazy: bool = False,
     ):
         self.ledger_path = ledger_path
         self._secret_key = secret_key or os.environ.get("LONLY_AUDIT_KEY")
         self.events: list[AuditEvent] = []
         self.latest_hash: str = self.GENESIS_HASH
+        self._next_seq: int = 0
         self._chain_error: str = ""
+        self._lazy = bool(lazy)
+        self._lock = threading.Lock()
 
         if self.ledger_path and os.path.exists(self.ledger_path):
-            try:
-                valid, reason, _ = self.load_and_verify()
-                if not valid:
-                    self._chain_error = reason
+            if self._lazy:
+                self._load_tail()
+                if self._chain_error:
                     print(
-                        f"[!] Audit ledger failed verification ({reason}); "
+                        f"[!] Audit ledger tail unreadable ({self._chain_error}); "
                         f"next append will archive {self.ledger_path} and start a fresh chain.",
                         file=sys.stderr,
                     )
-            except Exception as exc:  # unreadable ledger must not break startup
-                self._chain_error = f"unreadable ledger: {exc}"
-                self.events = []
-                self.latest_hash = self.GENESIS_HASH
-                print(
-                    f"[!] Audit ledger unreadable ({exc}); "
-                    f"next append will archive {self.ledger_path} and start a fresh chain.",
-                    file=sys.stderr,
-                )
+            else:
+                try:
+                    valid, reason, _ = self.load_and_verify()
+                    if not valid:
+                        self._chain_error = reason
+                        print(
+                            f"[!] Audit ledger failed verification ({reason}); "
+                            f"next append will archive {self.ledger_path} and start a fresh chain.",
+                            file=sys.stderr,
+                        )
+                except Exception as exc:  # unreadable ledger must not break startup
+                    self._chain_error = f"unreadable ledger: {exc}"
+                    self.events = []
+                    self.latest_hash = self.GENESIS_HASH
+                    self._next_seq = 0
+                    print(
+                        f"[!] Audit ledger unreadable ({exc}); "
+                        f"next append will archive {self.ledger_path} and start a fresh chain.",
+                        file=sys.stderr,
+                    )
+
+    def _load_tail(self) -> None:
+        """Recover the chain head from the last valid line without a full scan."""
+        try:
+            with open(self.ledger_path, "rb") as fh:
+                fh.seek(0, os.SEEK_END)
+                size = fh.tell()
+                if size == 0:
+                    return
+                fh.seek(max(0, size - 65536))
+                chunk = fh.read().decode("utf-8", errors="replace")
+            lines = [ln for ln in chunk.splitlines() if ln.strip()]
+            if not lines:
+                self._chain_error = "ledger tail unreadable"
+                return
+            last = AuditEvent.from_dict(json.loads(lines[-1]))
+            expected_event_hash = compute_event_hash(
+                last.sequence, last.timestamp, last.event_type, last.payload_hash, last.prev_hash
+            )
+            if last.payload_hash != compute_payload_hash(last.payload):
+                self._chain_error = f"payload altered at sequence {last.sequence}"
+                return
+            if last.event_hash != expected_event_hash:
+                self._chain_error = f"event hash mismatch at sequence {last.sequence}"
+                return
+            if not hmac.compare_digest(
+                last.signature, compute_signature(last.event_hash, self.secret_key)
+            ):
+                self._chain_error = f"signature verification failed at sequence {last.sequence}"
+                return
+            self.latest_hash = last.event_hash
+            self._next_seq = last.sequence + 1
+        except Exception as exc:
+            self._chain_error = f"unreadable ledger tail: {exc}"
 
     @property
     def secret_key(self) -> str:
@@ -140,6 +191,7 @@ class AuditLedger:
                 archived = ""
         self.events = []
         self.latest_hash = self.GENESIS_HASH
+        self._next_seq = 0
         self._chain_error = ""
         print(
             f"[!] Audit ledger chain could not be continued ({reason}). "
@@ -153,11 +205,34 @@ class AuditLedger:
         payload: dict,
         timestamp: Optional[str] = None,
     ) -> AuditEvent:
-        """Record and cryptographically seal an event to the ledger."""
+        """Record and cryptographically seal an event to the ledger.
+
+        Cross-process safe: the append holds an exclusive lock and re-reads the
+        chain tail, so concurrent writers cannot duplicate sequence numbers or
+        break the hash links.
+        """
+        if self.ledger_path:
+            with self._lock, file_lock(self.ledger_path):
+                return self._seal_event(event_type, payload, timestamp)
+        with self._lock:
+            return self._seal_event(event_type, payload, timestamp)
+
+    def _seal_event(
+        self,
+        event_type: AuditEventType | str,
+        payload: dict,
+        timestamp: Optional[str] = None,
+    ) -> AuditEvent:
         if self._chain_error:
             self._archive_ledger(self._chain_error)
+        if self._lazy and self.ledger_path and os.path.exists(self.ledger_path):
+            self.latest_hash = self.GENESIS_HASH
+            self._next_seq = 0
+            self._load_tail()
+            if self._chain_error:
+                self._archive_ledger(self._chain_error)
         ev_type = event_type.value if isinstance(event_type, AuditEventType) else str(event_type)
-        seq = len(self.events)
+        seq = self._next_seq
         ts = timestamp or time.strftime("%Y-%m-%dT%H:%M:%S")
         p_hash = compute_payload_hash(payload)
         e_hash = compute_event_hash(seq, ts, ev_type, p_hash, self.latest_hash)
@@ -176,6 +251,7 @@ class AuditLedger:
 
         self.events.append(event)
         self.latest_hash = e_hash
+        self._next_seq = seq + 1
 
         if self.ledger_path:
             try:
@@ -183,6 +259,7 @@ class AuditLedger:
                 with open(self.ledger_path, "a", encoding="utf-8") as fh:
                     fh.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
                     fh.flush()
+                    os.fsync(fh.fileno())
             except OSError as exc:  # degrade to in-memory WAL; never break execution
                 print(f"[!] Audit ledger write failed ({self.ledger_path}): {exc}", file=sys.stderr)
 
@@ -201,6 +278,7 @@ class AuditLedger:
                     loaded_events.append(AuditEvent.from_dict(json.loads(line)))
 
         self.events = loaded_events
+        self._next_seq = len(loaded_events)
         if loaded_events:
             self.latest_hash = loaded_events[-1].event_hash
         else:
@@ -302,7 +380,7 @@ def resolve_audit_key(key_file: Optional[str] = None) -> str:
 DEFAULT_AUDIT_LEDGER_PATH = os.environ.get(
     "LONLY_AUDIT_LEDGER", os.path.expanduser("~/.lonly/audit.wal")
 )
-DEFAULT_AUDIT_LEDGER = AuditLedger(ledger_path=DEFAULT_AUDIT_LEDGER_PATH)
+DEFAULT_AUDIT_LEDGER = AuditLedger(ledger_path=DEFAULT_AUDIT_LEDGER_PATH, lazy=True)
 
 
 def main():
@@ -322,7 +400,7 @@ def main():
         target_path = os.path.join(target_path, "audit_ledger.jsonl")
 
     ledger = AuditLedger(ledger_path=target_path, secret_key=key)
-    valid, reason, count = ledger.verify_integrity()
+    valid, reason, count = ledger.load_and_verify()
     if valid:
         print(f"[+] AUDIT INTEGRITY: PASS — {reason}")
         print(f"    Root Chain Digest: {ledger.get_root_hash()}")

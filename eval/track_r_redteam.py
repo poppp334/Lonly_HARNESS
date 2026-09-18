@@ -1140,6 +1140,219 @@ class TestRedTeamHarness(unittest.TestCase):
         ])
 
 
+    def test_r52_storage_locked_concurrent_appends(self):
+        """R52: append_jsonl serializes concurrent writers without losing records."""
+        import tempfile
+        import threading
+        from core import storage
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "concurrent.jsonl")
+            n_threads, per_thread = 4, 25
+            barrier = threading.Barrier(n_threads)
+
+            def worker(i):
+                barrier.wait()
+                for j in range(per_thread):
+                    storage.append_jsonl(path, {"i": i, "j": j})
+
+            threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+            records = storage.read_jsonl(path)
+            self.assertEqual(len(records), n_threads * per_thread)
+            self.assertEqual(len({(r["i"], r["j"]) for r in records}), n_threads * per_thread)
+
+    def test_r53_atomic_write_failure_leaves_original(self):
+        """R53: atomic_write_text never truncates the original and cleans temp files."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from core import storage
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "data.json")
+            storage.atomic_write_text(path, "original")
+            with patch("core.storage.os.replace", side_effect=OSError("boom")):
+                with self.assertRaises(OSError):
+                    storage.atomic_write_text(path, "replacement")
+            self.assertEqual(Path(path).read_text(encoding="utf-8"), "original")
+            self.assertEqual(list(Path(tmp).glob(".tmp-*")), [])
+
+    def test_r54_ensure_dir_restrictive_mode(self):
+        """R54: ensure_dir creates directories with 0700 permissions."""
+        import stat
+        import tempfile
+        from core import storage
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "private")
+            storage.ensure_dir(target)
+            self.assertEqual(stat.S_IMODE(os.stat(target).st_mode), 0o700)
+
+    def test_r55_session_append_is_incremental(self):
+        """R55: append_message does not rewrite the whole transcript (save_session not called)."""
+        import tempfile
+        from core.session import SessionManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            sm = SessionManager(base_dir=tmp)
+            session = sm.create_session(title="Append Test")
+
+            def _forbidden(*_a, **_k):
+                raise AssertionError("append_message must not call save_session")
+
+            original = sm.save_session
+            sm.save_session = _forbidden
+            try:
+                sm.append_message(session, "user", "hi")
+                sm.append_message(session, "assistant", "yo")
+            finally:
+                sm.save_session = original
+
+            transcript = sm.get_session_dir(session.session_id) / "transcript.jsonl"
+            lines = [l for l in transcript.read_text(encoding="utf-8").splitlines() if l.strip()]
+            self.assertEqual(len(lines), 2)
+            loaded = sm.load_session(session.session_id)
+            self.assertEqual([m.content for m in loaded.messages], ["hi", "yo"])
+
+    def test_r56_no_auto_adopt_newest_session(self):
+        """R56: a manager with no active session creates a fresh one instead of resuming."""
+        import tempfile
+        from core.session import SessionManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            sm = SessionManager(base_dir=tmp)
+            first = sm.create_session(title="First")
+            sm.active_session = None
+            second = sm.get_or_create_active_session()
+            self.assertNotEqual(first.session_id, second.session_id)
+            self.assertIn(first.session_id, [s["session_id"] for s in sm.list_sessions()])
+
+    def test_r57_corrupt_transcript_line_tolerated(self):
+        """R57: load_session skips a corrupt transcript line and keeps the rest."""
+        import tempfile
+        from core.session import SessionManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            sm = SessionManager(base_dir=tmp)
+            session = sm.create_session(title="Corrupt")
+            sm.append_message(session, "user", "one")
+            transcript = sm.get_session_dir(session.session_id) / "transcript.jsonl"
+            with open(transcript, "a", encoding="utf-8") as fh:
+                fh.write("{not valid json\n")
+            sm.append_message(session, "assistant", "two")
+            loaded = sm.load_session(session.session_id)
+            self.assertEqual([m.content for m in loaded.messages], ["one", "two"])
+
+    def test_r58_run_dirs_do_not_collide(self):
+        """R58: FindingsLog instances get unique run directories even within one second."""
+        import tempfile
+        from core.state import FindingsLog
+
+        previous = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp:
+            os.chdir(tmp)
+            try:
+                a = FindingsLog()
+                b = FindingsLog()
+                self.assertNotEqual(a.run_dir, b.run_dir)
+                self.assertTrue(os.path.isdir(a.run_dir) and os.path.isdir(b.run_dir))
+            finally:
+                os.chdir(previous)
+
+    def test_r59_evidence_graph_persists_artifacts(self):
+        """R59: every artifact is appended to disk and save() writes an atomic snapshot."""
+        import tempfile
+        from core.evidence import EvidenceGraph
+        from core.storage import read_jsonl
+
+        with tempfile.TemporaryDirectory() as tmp:
+            graph = EvidenceGraph(run_dir=tmp)
+            cmd = graph.add_command_artifact("nmap", ["-sV", "127.0.0.1"], "127.0.0.1")
+            graph.add_output_artifact("80/tcp open", "nmap_security_scan", "127.0.0.1",
+                                      command_hash=cmd.sha256)
+            graph.add_finding_artifact("open port", "nmap_security_scan", "127.0.0.1")
+            records = read_jsonl(graph.log_path)
+            self.assertEqual(len(records), 3)
+            self.assertTrue(os.path.exists(graph.log_path))
+            graph.save()
+            self.assertTrue(os.path.exists(graph.path))
+
+    def test_r60_lazy_ledger_continues_chain(self):
+        """R60: a lazy ledger recovers sequence/hash from the tail and extends the chain."""
+        import tempfile
+        from core.audit import AuditEventType, AuditLedger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "audit.wal")
+            first = AuditLedger(ledger_path=path, secret_key="TEST-KEY")
+            e0 = first.record_event(AuditEventType.PROMPT, {"p": 0})
+            e1 = first.record_event(AuditEventType.DECISION, {"d": 1})
+
+            lazy = AuditLedger(ledger_path=path, secret_key="TEST-KEY", lazy=True)
+            e2 = lazy.record_event(AuditEventType.PROCESS_END, {"x": 2})
+            self.assertEqual(e2.sequence, 2)
+            self.assertEqual(e2.prev_hash, e1.event_hash)
+
+            full = AuditLedger(ledger_path=path, secret_key="TEST-KEY")
+            valid, reason, count = full.load_and_verify()
+            self.assertTrue(valid, reason)
+            self.assertEqual(count, 3)
+            self.assertEqual([e.sequence for e in full.events], [0, 1, 2])
+            self.assertEqual(full.events[0].event_hash, e0.event_hash)
+
+    def test_r61_interleaved_ledger_instances(self):
+        """R61: two lazy instances on one ledger never duplicate sequence numbers."""
+        import tempfile
+        from core.audit import AuditEventType, AuditLedger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "audit.wal")
+            a = AuditLedger(ledger_path=path, secret_key="TEST-KEY", lazy=True)
+            b = AuditLedger(ledger_path=path, secret_key="TEST-KEY", lazy=True)
+            ea = a.record_event(AuditEventType.PROMPT, {"w": "a"})
+            eb = b.record_event(AuditEventType.PROMPT, {"w": "b"})
+            ea2 = a.record_event(AuditEventType.PROMPT, {"w": "a2"})
+            self.assertEqual([ea.sequence, eb.sequence, ea2.sequence], [0, 1, 2])
+            full = AuditLedger(ledger_path=path, secret_key="TEST-KEY")
+            valid, reason, count = full.load_and_verify()
+            self.assertTrue(valid, reason)
+            self.assertEqual(count, 3)
+
+    def test_r62_threaded_ledger_writes_verify(self):
+        """R62: concurrent thread writes serialize into a valid, gap-free chain."""
+        import tempfile
+        import threading
+        from core.audit import AuditEventType, AuditLedger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "audit.wal")
+            ledger = AuditLedger(ledger_path=path, secret_key="TEST-KEY", lazy=True)
+            n_threads, per_thread = 4, 10
+            barrier = threading.Barrier(n_threads)
+
+            def worker(i):
+                barrier.wait()
+                for j in range(per_thread):
+                    ledger.record_event(AuditEventType.DECISION, {"i": i, "j": j})
+
+            threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+            full = AuditLedger(ledger_path=path, secret_key="TEST-KEY")
+            valid, reason, count = full.load_and_verify()
+            self.assertTrue(valid, reason)
+            self.assertEqual(count, n_threads * per_thread)
+            self.assertEqual([e.sequence for e in full.events], list(range(n_threads * per_thread)))
+
+
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
     import io
@@ -1199,6 +1412,17 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R49 Audit key from env/keyfile (0600), not hardcoded", True, ""),
         ("R50 Impacket binary allowlist and capability wiring", True, ""),
         ("R51 Tool-level capability wiring for identity collisions", True, ""),
+        ("R52 Locked concurrent JSONL appends", True, ""),
+        ("R53 Atomic write failure leaves original intact", True, ""),
+        ("R54 ensure_dir restrictive permissions", True, ""),
+        ("R55 Session append is incremental (no full rewrite)", True, ""),
+        ("R56 No auto-adopt of newest session", True, ""),
+        ("R57 Corrupt transcript line tolerated on load", True, ""),
+        ("R58 Run directories do not collide", True, ""),
+        ("R59 Evidence graph persists artifacts and snapshot", True, ""),
+        ("R60 Lazy ledger continues the chain from the tail", True, ""),
+        ("R61 Interleaved ledger instances keep sequence integrity", True, ""),
+        ("R62 Threaded ledger writes verify gap-free", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

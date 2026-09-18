@@ -17,6 +17,14 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from core.storage import (
+    append_jsonl,
+    atomic_write_json,
+    atomic_write_text,
+    ensure_dir,
+    read_jsonl,
+)
+
 
 @dataclass
 class SessionMessage:
@@ -60,7 +68,7 @@ class SessionManager:
 
     def __init__(self, base_dir: Optional[Path | str] = None):
         self.base_dir = Path(base_dir) if base_dir else self.DEFAULT_BASE_DIR
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(str(self.base_dir))
         self.active_session: Optional[SessionState] = None
 
     def create_session(self, title: str = "Pentest Session", session_id: Optional[str] = None) -> SessionState:
@@ -72,21 +80,18 @@ class SessionManager:
         return session
 
     def get_or_create_active_session(self) -> SessionState:
-        """Return the current active session or create a default one."""
+        """Return the current active session or create a fresh one.
+
+        Never auto-adopts the newest stored session: resuming another
+        engagement requires an explicit `load_session`/`/session load`.
+        """
         if self.active_session is None:
-            sessions = self.list_sessions()
-            if sessions:
-                latest_id = sessions[0]["session_id"]
-                loaded = self.load_session(latest_id)
-                if loaded:
-                    self.active_session = loaded
-                    return loaded
             self.active_session = self.create_session("Default Session")
         return self.active_session
 
     def get_session_dir(self, session_id: str) -> Path:
         s_dir = self.base_dir / session_id
-        s_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(str(s_dir))
         return s_dir
 
     def get_session_log_file(self, session_id: Optional[str] = None) -> Path:
@@ -97,26 +102,12 @@ class SessionManager:
     def log_event(self, event: dict, session_id: Optional[str] = None) -> None:
         """Log a structured event directly into the active session log with isolation."""
         log_file = self.get_session_log_file(session_id)
-        with open(log_file, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+        append_jsonl(str(log_file), event)
 
     def get_tool_calls(self, session_id: Optional[str] = None) -> list[dict]:
         """Retrieve all tool call records strictly for the specified session."""
         log_file = self.get_session_log_file(session_id)
-        if not log_file.exists():
-            return []
-        calls = []
-        with open(log_file, "r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line:
-                    try:
-                        entry = json.loads(line)
-                        if entry.get("type") == "tool_call":
-                            calls.append(entry)
-                    except Exception:
-                        pass
-        return calls
+        return [e for e in read_jsonl(str(log_file)) if e.get("type") == "tool_call"]
 
     def get_seen_calls(self, session_id: Optional[str] = None) -> set[tuple[str, tuple]]:
         """Return set of (tool_name, sorted_args_tuple) for duplicate prevention in active session."""
@@ -141,31 +132,35 @@ class SessionManager:
             self.active_session.messages.clear()
             self.save_session(self.active_session)
 
-    def save_session(self, session: SessionState) -> None:
-        """Persist session state and transcripts to JSONL and metadata JSON."""
+    def _write_meta(self, session: SessionState) -> None:
         session.updated_at = time.strftime("%Y-%m-%dT%H:%M:%S")
         s_dir = self.get_session_dir(session.session_id)
+        meta = {
+            "session_id": session.session_id,
+            "title": session.title,
+            "created_at": session.created_at,
+            "updated_at": session.updated_at,
+            "active_target": session.active_target,
+            "context_summary": session.context_summary,
+            "message_count": len(session.messages),
+        }
+        atomic_write_json(str(s_dir / "meta.json"), meta)
 
-        meta_file = s_dir / "meta.json"
-        with open(meta_file, "w", encoding="utf-8") as fh:
-            meta = {
-                "session_id": session.session_id,
-                "title": session.title,
-                "created_at": session.created_at,
-                "updated_at": session.updated_at,
-                "active_target": session.active_target,
-                "context_summary": session.context_summary,
-                "message_count": len(session.messages),
-            }
-            json.dump(meta, fh, ensure_ascii=False, indent=2)
+    def save_session(self, session: SessionState) -> None:
+        """Persist full session state (metadata + transcript snapshot) atomically.
 
-        transcript_file = s_dir / "transcript.jsonl"
-        with open(transcript_file, "w", encoding="utf-8") as fh:
-            for msg in session.messages:
-                fh.write(json.dumps(msg.to_dict(), ensure_ascii=False) + "\n")
+        Hot-path message appends use `append_message` (O(1) append); this method
+        is for explicit saves, renames, and compaction.
+        """
+        self._write_meta(session)
+        s_dir = self.get_session_dir(session.session_id)
+        body = "".join(
+            json.dumps(msg.to_dict(), ensure_ascii=False) + "\n" for msg in session.messages
+        )
+        atomic_write_text(str(s_dir / "transcript.jsonl"), body)
 
     def load_session(self, session_id: str) -> Optional[SessionState]:
-        """Load session state from disk."""
+        """Load session state from disk, tolerating corrupt lines and metadata."""
         s_dir = self.base_dir / session_id
         meta_file = s_dir / "meta.json"
         transcript_file = s_dir / "transcript.jsonl"
@@ -173,21 +168,21 @@ class SessionManager:
         if not meta_file.exists() or not transcript_file.exists():
             return None
 
-        with open(meta_file, "r", encoding="utf-8") as fh:
-            meta = json.load(fh)
+        try:
+            with open(meta_file, "r", encoding="utf-8") as fh:
+                meta = json.load(fh)
+        except (json.JSONDecodeError, OSError):
+            meta = {}
 
-        messages = []
-        with open(transcript_file, "r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line:
-                    d = json.loads(line)
-                    messages.append(SessionMessage(
-                        role=d.get("role", "user"),
-                        content=d.get("content", ""),
-                        timestamp=d.get("timestamp", ""),
-                        metadata=d.get("metadata", {}),
-                    ))
+        messages = [
+            SessionMessage(
+                role=d.get("role", "user"),
+                content=d.get("content", ""),
+                timestamp=d.get("timestamp", ""),
+                metadata=d.get("metadata", {}),
+            )
+            for d in read_jsonl(str(transcript_file))
+        ]
 
         session = SessionState(
             session_id=meta.get("session_id", session_id),
@@ -219,10 +214,12 @@ class SessionManager:
         return results
 
     def append_message(self, session: SessionState, role: str, content: str, metadata: Optional[dict] = None) -> SessionMessage:
-        """Add a message to the active session and persist immediately."""
+        """Append one message to the transcript (O(1)) and refresh session metadata."""
         msg = SessionMessage(role=role, content=content, metadata=metadata or {})
         session.messages.append(msg)
-        self.save_session(session)
+        s_dir = self.get_session_dir(session.session_id)
+        append_jsonl(str(s_dir / "transcript.jsonl"), msg.to_dict())
+        self._write_meta(session)
         return msg
 
     def get_compacted_messages(self, session: SessionState, max_window: int = 20) -> list[SessionMessage]:

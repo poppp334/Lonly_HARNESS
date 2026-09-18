@@ -70,9 +70,9 @@ machine-checkable acceptance test in `eval/`.
 - **Track E (E1–E8)**: CLI interaction and edge cases (scope gate, evidence gate, prompt state).
 - **Track F (F1–F10)**: PrivEsc specialist delegation node.
 - **Track DLT (DLT1–DLT15)**: DLT scoring, runner port, no-fabrication guard, negative control.
-- **Track R (R1–R51)**: Adversarial red team & security boundaries.
+- **Track R (R1–R62)**: Adversarial red team & security boundaries.
 - **Track B (B0)**: Subprocess-isolated tool smokes (24/24).
-- Total: **128/128 checks passing (100%)**.
+- Total: **139/139 checks passing (100%)**.
 
 ### N6 — Specialist verification & flywheel (`models/`) [Implemented & Verified]
 - Specialist protocol adherence (`models/privesc_protocol.py`, `models/smoke_test.py`).

@@ -86,6 +86,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         pa.chat_history.clear()
         if os.path.exists(pa.SESSION_LOG_FILE):
             os.remove(pa.SESSION_LOG_FILE)
+        pa._session_manager.clear_active_session_logs()
         mock_llm.invoke.side_effect = [
             AIMessage(content='Action: shell_exec\nAction Input: {"cmd": "whoami"}'),
             AIMessage(content="Final Answer: Command executed successfully."),
@@ -113,6 +114,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         pa.chat_history.clear()
         if os.path.exists(pa.SESSION_LOG_FILE):
             os.remove(pa.SESSION_LOG_FILE)
+        pa._session_manager.clear_active_session_logs()
         with patch("pentest_agent.llm", mock_llm), \
              patch("pentest_agent.RISK_CHECKPOINT_THRESHOLD", 1), \
              patch("builtins.input", return_value="r"), \

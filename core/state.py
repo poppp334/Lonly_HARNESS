@@ -20,8 +20,11 @@ from __future__ import annotations
 import json
 import os
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
+
+from core.storage import atomic_write_json, ensure_dir
 
 # Canonical pentest phase order (config, not code — reorder to taste)
 DEFAULT_PHASES = ("recon", "enumerate", "vuln_check", "privesc", "report")
@@ -64,9 +67,9 @@ class FindingsLog:
     def __init__(self, run_dir: str | None = None):
         self.findings: list[Finding] = []
         self.run_dir = run_dir or os.path.join(
-            "runs", time.strftime("%Y%m%dT%H%M%S")
+            "runs", f"{time.strftime('%Y%m%dT%H%M%S')}-{os.getpid()}-{uuid.uuid4().hex[:4]}"
         )
-        os.makedirs(self.run_dir, exist_ok=True)
+        ensure_dir(self.run_dir)
         self.path = os.path.join(self.run_dir, "findings.json")
 
     def add(self, finding: Finding) -> None:
@@ -76,11 +79,10 @@ class FindingsLog:
             self.save()
 
     def save(self) -> None:
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump(
-                {"findings": [f.__dict__ for f in self.findings]},
-                fh, ensure_ascii=False, indent=2,
-            )
+        atomic_write_json(
+            self.path,
+            {"findings": [f.__dict__ for f in self.findings]},
+        )
 
     def prompt_block(self, max_findings: int = 20) -> str:
         """Compact block injected into the prompt each turn."""
