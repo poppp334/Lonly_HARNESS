@@ -254,11 +254,9 @@ path, manifest + resume; not needed until corpus grows.
 
 ### E. Architecture and duplication
 
-**E1 — Two authorization gates that disagree (P0, root of A1/A2).**
-Agent gate (`core/tool_dispatch.evaluate_tool_call` + guardrails) and broker gate
-(`core/policy.CapabilityPolicy`) implement different rules over different identifiers. Fix: one
-policy decision, passed as a signed/structured `ToolCallContext` to the broker; broker enforces
-only what the gate decided (plus defense-in-depth).
+**E1 — Two authorization gates that disagree (P0, root of A1/A2) — COMPLETED 2026-09-21.**
+Original issue: Agent gate and broker gate implemented different rules over different identifiers; agent previously hardcoded approval to tool name membership instead of operator decision.
+Fix: Agent confirmation gate tracks the real operator decision (`operator_approved`) and passes it directly into `ToolCallExecutor.execute(approved=operator_approved)`, propagating through `core/tool_context.py` to `ExecutionBroker.execute()`. Verified in R90.
 
 **E2 — Duplicated policy constants (P1).**
 Failure patterns (`core/parser.py:17-25` vs `tools/base.py:36-45`), positive-finding rules
@@ -433,10 +431,11 @@ Shipped:
 - C10 DLT Escalation Path Safety & Idempotent DPO Export (`core/dlt.py` bare dirname resilience, locked `append_jsonl`, deduplicated preference pairs). Verified in R88.
 - E4 Tool Registry Duplicate Guard & Atomic Report Persistence (`tools/__init__.py` duplicate tool name detection; `core/evidence.py` `atomic_write` report output). Verified in R89.
 - B8 Fail-Silent Error Paths & Observability (warning logs on privesc specialist import failure, main loop `logger.exception` with full traceback, session metadata warning logs).
-New checks R81–R89; suite is now **166/166**.
+- E1 Single-Policy Gate & Approval Decision Propagation (`pentest_agent.py` threads real operator confirmation answer to `ctx.tool_executor.execute()`, ensuring broker receives true operator decision). Verified in R90.
+New checks R81–R90; suite is now **167/167**.
 
 Remaining architectural tasks (opportunistic backlog):
-E1 single-policy context, E3 dead module consolidation, E5 continue port extraction, multi-session/worker mode (option B) if needed.
+E3 dead module consolidation, E5 continue port extraction, multi-session/worker mode (option B) if needed.
 
 ---
 

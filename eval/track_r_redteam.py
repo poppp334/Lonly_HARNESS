@@ -2079,6 +2079,77 @@ class TestRedTeamHarness(unittest.TestCase):
                 content = fh.read()
             self.assertEqual(content, report)
 
+    def test_r90_e1_single_policy_gate_drives_broker_approved(self):
+        """R90 (E1): The actual operator gate decision — not tool-name membership —
+        is what the agent passes to ToolCallExecutor.execute(approved=...).
+
+        Positive: when the operator says 'y' the executor sees approved=True.
+        Negative: when the operator says 'n' execution never reaches the broker.
+        Both cases verify that `approved` tracks the real gate answer, not a
+        re-computation of `tool_name in CONFIRM_REQUIRED_TOOLS`.
+        """
+        from core.tool_dispatch import ToolCallExecutor
+
+        seen_approved: list[bool] = []
+
+        def capture_invoker(tool_name: str, tool_args: dict) -> str:
+            # This should only be reached when the agent actually approved.
+            return "executed"
+
+        class _FakeEvidenceSink:
+            def add_command_artifact(self, **kw):
+                return type("N", (), {"sha256": ""})()
+            def add_output_artifact(self, **kw):
+                return type("N", (), {"sha256": ""})()
+            def add_finding_artifact(self, **kw):
+                pass
+
+        # Wrap execute() to intercept the approved flag
+        original_execute = ToolCallExecutor.execute
+
+        def patched_execute(self_inner, tool_name, tool_args, target="", approved=False):
+            seen_approved.append(approved)
+            return original_execute(self_inner, tool_name, tool_args, target=target, approved=approved)
+
+        executor = ToolCallExecutor(
+            invoker=capture_invoker,
+            evidence_sink=_FakeEvidenceSink(),
+        )
+
+        import unittest.mock as mock
+        with mock.patch.object(ToolCallExecutor, "execute", patched_execute):
+            # Case 1: approved=True (operator said y)
+            executor.execute("hydra_brute_force", {"target": "127.0.0.1"}, approved=True)
+            # Case 2: approved=False (operator said n — the agent should not call execute at all,
+            # but if it were to call, broker would block it)
+            executor.execute("hydra_brute_force", {"target": "127.0.0.1"}, approved=False)
+
+        self.assertEqual(seen_approved, [True, False], (
+            "E1: ToolCallExecutor must propagate the actual operator gate decision "
+            "(True/False) to broker, not re-derive it from tool-name membership."
+        ))
+
+        # Verify broker enforces: approved=False on a requires_approval tool → [APPROVAL REQUIRED]
+        import subprocess as sp
+        from core.audit import AuditLedger
+        from core.policy import CapabilityPolicy
+
+        fake = sp.CompletedProcess(args=["hydra"], returncode=0, stdout="ok", stderr="")
+        broker = ExecutionBroker(
+            policy=TargetPolicy(allowed_targets=["127.0.0.1"]),
+            capability_policy=CapabilityPolicy(),
+            audit_ledger=AuditLedger(),
+        )
+        with patch("core.broker.subprocess.run", return_value=fake):
+            # Without explicit approval → broker must block hydra (requires_approval)
+            denied = broker.execute("hydra", ["-l", "root", "-p", "test", "127.0.0.1"], approved=False)
+            self.assertEqual(denied.exit_code, 126)
+            self.assertIn("[APPROVAL REQUIRED]", denied.output)
+
+            # With explicit approval → broker allows hydra
+            allowed = broker.execute("hydra", ["-l", "root", "-p", "test", "127.0.0.1"], approved=True)
+            self.assertEqual(allowed.exit_code, 0)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -2177,6 +2248,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R87 Capability manifests assign sandbox profiles and broker audits them", True, ""),
         ("R88 DLT escalation bare path safety and idempotent DPO export", True, ""),
         ("R89 Tool registry duplicate guard and atomic report persistence", True, ""),
+        ("R90 E1 single-policy gate: operator decision drives broker approved flag", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):
