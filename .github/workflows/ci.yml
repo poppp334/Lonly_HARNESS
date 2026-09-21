@@ -33,6 +33,6 @@ jobs:
         run: |
           python eval/ci_security_gate.py
 
-      - name: Run Consolidated 153-Check Acceptance Suite
+      - name: Run Consolidated 172-Check Acceptance Suite
         run: |
           LONLY_EVAL_PYTHON=python python eval/eval_lonly.py

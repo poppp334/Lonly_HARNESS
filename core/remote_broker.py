@@ -170,8 +170,11 @@ class RemoteBrokerServer:
             local_broker = self.broker
             allowed_scope = self.allowed_scope
 
-        self._server = socketserver.TCPServer((self.host, self.port), CustomHandler)
-        self._server.allow_reuse_address = True
+        class _ReuseTCPServer(socketserver.TCPServer):
+            allow_reuse_address = True
+
+        self._server = _ReuseTCPServer((self.host, self.port), CustomHandler)
+        self.port = self._server.server_address[1]
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:

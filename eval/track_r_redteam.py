@@ -754,9 +754,14 @@ class TestRedTeamHarness(unittest.TestCase):
             self.assertEqual(loaded.messages[1].content, "Hello! How can I assist you?")
 
         # 2. Test conversational Mode 1 in pentest_agent (no tool execution)
-        greeting_res = pa.run_react_agent("Hi")
-        self.assertTrue(isinstance(greeting_res, str) and len(greeting_res.strip()) > 0)
-        self.assertFalse(greeting_res.startswith("Action:"))
+        from langchain_core.messages import AIMessage
+        from unittest.mock import MagicMock
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = AIMessage(content="Hello! How can I assist you with your security assessment?")
+        with patch.object(pa, "llm", mock_llm):
+            greeting_res = pa.run_react_agent("Hi")
+            self.assertTrue(isinstance(greeting_res, str) and len(greeting_res.strip()) > 0)
+            self.assertFalse(greeting_res.startswith("Action:"))
 
     def test_r37_target_anchor_extraction_and_hallucination_sanitization(self):
         """R37: Explicit user target URLs/FQDNs are extracted and placeholder/parent domains are sanitized."""
@@ -2331,15 +2336,9 @@ class TestRedTeamHarness(unittest.TestCase):
 
     def test_r95_multi_host_remote_broker_daemon(self):
         """R95: RemoteBrokerServer enforces HMAC authentication, scope gating, and dispatches via client."""
-        import socket
         from core.remote_broker import RemoteBrokerServer, RemoteBrokerClient
         from unittest.mock import MagicMock
         from core.broker import ExecutionResult
-
-        sock = socket.socket()
-        sock.bind(("", 0))
-        port = sock.getsockname()[1]
-        sock.close()
 
         mock_local_broker = MagicMock()
         mock_local_broker.execute.return_value = ExecutionResult(
@@ -2357,12 +2356,13 @@ class TestRedTeamHarness(unittest.TestCase):
 
         secret = "secret-token-12345"
         server = RemoteBrokerServer(
-            port=port,
+            port=0,
             secret_key=secret,
             allowed_scope=["127.0.0.1", "10.0.0.0/24"],
             broker=mock_local_broker,
         )
         server.start()
+        port = server.port
 
         try:
             client = RemoteBrokerClient(server_url=f"http://127.0.0.1:{port}", secret_key=secret)
