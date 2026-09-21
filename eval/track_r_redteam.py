@@ -2495,9 +2495,18 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R95 Multi-host remote broker daemon and HMAC authentication", True, ""),
     ]
     if not result.wasSuccessful():
-        for i, failure in enumerate(result.failures + result.errors):
-            idx = min(i, len(fixtures) - 1)
-            fixtures[idx] = (fixtures[idx][0], False, str(failure[1]))
+        for test_case, err in result.failures + result.errors:
+            method_name = getattr(test_case, "_testMethodName", str(test_case))
+            print(f"[!] Track R test failed: {method_name}\n{err}", file=sys.stderr)
+            matched = False
+            for idx, (fname, _, _) in enumerate(fixtures):
+                tag = fname.split()[0].lower() + "_"
+                if tag in method_name.lower():
+                    fixtures[idx] = (fname, False, str(err))
+                    matched = True
+                    break
+            if not matched and fixtures:
+                fixtures[0] = (fixtures[0][0], False, f"[{method_name}] {err}")
     return fixtures
 
 

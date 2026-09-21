@@ -35,4 +35,5 @@ jobs:
 
       - name: Run Consolidated 172-Check Acceptance Suite
         run: |
-          LONLY_EVAL_PYTHON=python python eval/eval_lonly.py
+          python eval/eval_lonly.py 2>&1 | tee eval.log
+          cat eval.log >> "$GITHUB_STEP_SUMMARY"
