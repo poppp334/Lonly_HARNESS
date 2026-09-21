@@ -118,17 +118,16 @@ WAL signatures when `LONLY_AUDIT_KEY` is unset, invalidating the "unforgeable ch
 claim. Fix: require `LONLY_AUDIT_KEY` or generate a 0600 key file on first run; fail closed.
 
 **A7 — Secrets inherited by scanned tools (P1).**
-`core/broker.py:195` passes `dict(os.environ)` to every child, exposing `LONLY_AUDIT_KEY`,
-`LONLY_PRIVESC_PASSWORD`, cloud/API tokens to the target's tooling. Fix: allowlist (`PATH`, `HOME`,
-`LANG`, `TERM`, tool-specific vars) instead of copying `os.environ`.
+`core/broker.py:195` previously passed `dict(os.environ)` to every child, exposing `LONLY_AUDIT_KEY`, `LONLY_PRIVESC_PASSWORD`, cloud/API tokens to the target's tooling.
+Fix: Implemented `sanitize_child_env` with strict `SAFE_ENV_ALLOWLIST` (`PATH`, `HOME`, `USER`, `LANG`, etc.) and unconditional purge of `FORBIDDEN_ENV_KEYS` (`LONLY_AUDIT_KEY`, `LONLY_PRIVESC_PASSWORD`, tokens, secrets). Verified in R81.
 
 **A8 — Recon defaults and port profiles (P0).**
 Original issue: `tools/recon.py` had missing `re` import and masscan `-ptop-1000` crash, which previously fell back to aggressive `1-65535` or blind sequential `1-1000` at `rate=1000` pkts/s (causing network flooding, firewall drops, and missed critical services like MSSQL/MySQL/RDP).
 Fix: Replaced aggressive recon defaults with smart, curated, non-damaging service profiles (`TOP_100_PORTS`, `TOP_COMMON_PORTS`, `WEB_PORTS`, `INFRA_AD_PORTS`, `DATABASE_PORTS`), polite Nmap timing (`T3`), safe Masscan rate (250 pps), and non-exhausting Rustscan batch sizes (300). Verified in R47.
 
 **A9 — `curl -d @file` exfiltration path (P1, OBSERVED capability).**
-`tools/web.py:129` passes LLM `data` straight to `-d`; curl reads `@path` from disk. Fix: reject
-values starting with `@` or prepend `--data-raw`.
+`tools/web.py:129` previously passed LLM `data` straight to `-d`; curl reads `@path` from disk.
+Fix: Switched from `-d` to `--data-raw`, preventing curl from interpreting `@filename` as a local disk path and eliminating file exfiltration while preserving valid payloads. Verified in R82.
 
 ### B. State, concurrency, and the audit chain
 
@@ -433,9 +432,15 @@ docs sweep + CI grep; history/`.gitignore` cleanup.
 Acceptance: fresh clone → `make setup && make test` green in CI; `make lint` exists; docs grep
 clean for `gemma3:4b`/stale counts.
 
-### Phase 4 — Architecture (opportunistic)
-E1 single-policy context, E3 wire-or-archive dead modules, E5 continue port extraction,
-`core/doctor.py` config alignment, multi-session/worker mode (option B) if needed.
+### Phase 4 — Security Isolation & Architecture Hardening — PARTIALLY COMPLETED 2026-09-21
+Shipped:
+- A7 Child Process Environment Isolation (`core/broker.py` `sanitize_child_env` enforcing `SAFE_ENV_ALLOWLIST` and purging `LONLY_AUDIT_KEY`, `LONLY_PRIVESC_PASSWORD`, tokens, and credentials). Verified in R81.
+- A9 Curl Argument Exfiltration Defense (`tools/web.py` `curl_web_request` enforcing `--data-raw` instead of `-d`, preventing arbitrary `@file` exfiltration). Verified in R82.
+- Doctor Diagnostic Alignment (`core/doctor.py` aligned with `LonlyConfig` singleton for model names and workspace path). Verified in R83.
+New checks R81–R83; suite is now **160/160**.
+
+Remaining architectural tasks (opportunistic):
+E1 single-policy context, E3 wire-or-archive dead modules, E5 continue port extraction, multi-session/worker mode (option B) if needed.
 
 ---
 

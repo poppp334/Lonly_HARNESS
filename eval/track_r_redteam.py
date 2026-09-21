@@ -1768,6 +1768,118 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertIn("torch>=", req_sft)
         self.assertIn("[tool.ruff]", pyproj)
 
+    def test_r81_child_process_environment_isolation_and_secret_scrubbing(self):
+        """R81: sanitize_child_env scrubs secrets and ExecutionBroker enforces child env isolation."""
+        from core.broker import ExecutionBroker, sanitize_child_env
+
+        old_audit = os.environ.get("LONLY_AUDIT_KEY")
+        old_privesc = os.environ.get("LONLY_PRIVESC_PASSWORD")
+        try:
+            os.environ["LONLY_AUDIT_KEY"] = "super-secret-wal-key"
+            os.environ["LONLY_PRIVESC_PASSWORD"] = "secret-ssh-pw"
+            os.environ["MY_RANDOM_TOKEN"] = "token123"
+            os.environ["CUSTOM_SECRET_API_KEY"] = "api123"
+
+            # 1. sanitize_child_env strips secrets and non-allowlisted variables
+            scrubbed = sanitize_child_env(venv_bin="/custom/venv/bin")
+            self.assertNotIn("LONLY_AUDIT_KEY", scrubbed)
+            self.assertNotIn("LONLY_PRIVESC_PASSWORD", scrubbed)
+            self.assertNotIn("MY_RANDOM_TOKEN", scrubbed)
+            self.assertNotIn("CUSTOM_SECRET_API_KEY", scrubbed)
+            self.assertIn("PATH", scrubbed)
+            self.assertTrue(scrubbed["PATH"].startswith("/custom/venv/bin"))
+
+            # 2. Broker executes child with scrubbed env
+            broker = ExecutionBroker()
+            captured_env = {}
+
+            def fake_run(full_cmd, **kwargs):
+                nonlocal captured_env
+                captured_env = kwargs.get("env", {})
+
+                class Res:
+                    returncode = 0
+                    stdout = "ok"
+                    stderr = ""
+
+                return Res()
+
+            with patch("core.broker.subprocess.run", side_effect=fake_run):
+                res = broker.execute("curl", ["http://127.0.0.1"], target="127.0.0.1", capability="curl")
+                self.assertEqual(res.stdout, "ok")
+                self.assertNotIn("LONLY_AUDIT_KEY", captured_env)
+                self.assertNotIn("LONLY_PRIVESC_PASSWORD", captured_env)
+                self.assertNotIn("CUSTOM_SECRET_API_KEY", captured_env)
+        finally:
+            if old_audit is not None:
+                os.environ["LONLY_AUDIT_KEY"] = old_audit
+            else:
+                os.environ.pop("LONLY_AUDIT_KEY", None)
+            if old_privesc is not None:
+                os.environ["LONLY_PRIVESC_PASSWORD"] = old_privesc
+            else:
+                os.environ.pop("LONLY_PRIVESC_PASSWORD", None)
+            os.environ.pop("MY_RANDOM_TOKEN", None)
+            os.environ.pop("CUSTOM_SECRET_API_KEY", None)
+
+    def test_r82_curl_data_raw_argument_injection_defense(self):
+        """R82: curl_web_request uses --data-raw to prevent @filename local file exfiltration."""
+        from tools.web import curl_web_request
+
+        captured_argv = []
+
+        def fake_run_argv(tool, argv, **kwargs):
+            nonlocal captured_argv
+            captured_argv = list(argv)
+            return "OK"
+
+        with patch("tools.web.run_argv", side_effect=fake_run_argv):
+            # Test payload starting with '@'
+            res = curl_web_request.invoke({
+                "url": "http://127.0.0.1/upload",
+                "method": "POST",
+                "data": "@/etc/passwd",
+                "headers": "Content-Type: application/json",
+            })
+            self.assertEqual(res, "OK")
+            self.assertIn("--data-raw", captured_argv)
+            self.assertIn("@/etc/passwd", captured_argv)
+            self.assertNotIn("-d", captured_argv)
+
+    def test_r83_doctor_system_diagnostics_configuration_alignment(self):
+        """R83: core.doctor health checks align with centralized LonlyConfig."""
+        import tempfile
+        from core.config import LonlyConfig
+        from core.doctor import check_ollama_service, check_wordlists_and_knowledge
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            custom_cfg = LonlyConfig(
+                model_name="custom-phi4",
+                specialist_model_name="custom-privesc",
+                workspace_dir=tmp_path,
+            )
+
+            # Workspace diagnostic uses custom_cfg.workspace_dir
+            wk_results = check_wordlists_and_knowledge(cfg=custom_cfg)
+            storage_item = next(r for r in wk_results if r.item == "Session Storage")
+            self.assertIn(str(tmp_path / "sessions"), storage_item.detail)
+
+            # Ollama diagnostic inspects custom model names
+            with patch("urllib.request.urlopen") as mock_url:
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = json.dumps({
+                    "models": [{"name": "custom-phi4:latest"}, {"name": "custom-privesc:latest"}]
+                }).encode("utf-8")
+                mock_resp.__enter__.return_value = mock_resp
+                mock_url.return_value = mock_resp
+
+                ol_results = check_ollama_service(cfg=custom_cfg)
+                gen_item = next(r for r in ol_results if "custom-phi4" in r.item)
+                spec_item = next(r for r in ol_results if "custom-privesc" in r.item)
+                self.assertEqual(gen_item.status, "OK")
+                self.assertEqual(spec_item.status, "OK")
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -1857,6 +1969,9 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R78 Signal handlers child tracking and cleanups", True, ""),
         ("R79 Documentation integrity and anti-drift gate", True, ""),
         ("R80 Pinned dependencies and SFT requirement separation", True, ""),
+        ("R81 Child process environment isolation and secret scrubbing", True, ""),
+        ("R82 Curl data-raw defense against file exfiltration", True, ""),
+        ("R83 Doctor system diagnostics configuration alignment", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

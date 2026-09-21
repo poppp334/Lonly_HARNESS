@@ -24,6 +24,71 @@ from core.ratelimit import RateLimiter
 from core.sandbox import SandboxManager, profile_for
 from core.vault import DEFAULT_VAULT, SecretVault
 
+SAFE_ENV_ALLOWLIST: frozenset[str] = frozenset({
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TERM",
+    "SHELL",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "TZ",
+    "LD_LIBRARY_PATH",
+    "PYTHONPATH",
+    "VIRTUAL_ENV",
+    "DISPLAY",
+    "SHLVL",
+})
+
+FORBIDDEN_ENV_KEYS: frozenset[str] = frozenset({
+    "LONLY_AUDIT_KEY",
+    "LONLY_PRIVESC_PASSWORD",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "GITHUB_TOKEN",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+})
+
+
+def sanitize_child_env(
+    explicit_env: Optional[dict[str, str]] = None,
+    venv_bin: Optional[str] = None,
+) -> dict[str, str]:
+    """Scrub sensitive environment variables and enforce allowlist for child processes."""
+    if explicit_env is not None:
+        child_env = dict(explicit_env)
+    else:
+        child_env = {k: v for k, v in os.environ.items() if k in SAFE_ENV_ALLOWLIST}
+
+    # Ensure forbidden keys or sensitive prefixes are purged unconditionally
+    for key in list(child_env.keys()):
+        key_upper = key.upper()
+        if (
+            key in FORBIDDEN_ENV_KEYS
+            or key_upper.startswith("LONLY_AUDIT_")
+            or key_upper.startswith("LONLY_PRIVESC_")
+            or key_upper.startswith("LONLY_VAULT_")
+            or "SECRET" in key_upper
+            or "PASSWORD" in key_upper
+            or "TOKEN" in key_upper
+        ):
+            del child_env[key]
+
+    # Prepend venv_bin to PATH if given
+    if venv_bin:
+        current_path = child_env.get("PATH", "")
+        path_parts = current_path.split(os.pathsep) if current_path else []
+        if venv_bin not in path_parts:
+            child_env["PATH"] = f"{venv_bin}{os.pathsep}{current_path}" if current_path else venv_bin
+
+    return child_env
+
 
 @dataclass
 class ExecutionResult:
@@ -247,10 +312,8 @@ class ExecutionBroker:
             },
         )
 
-        # Build child execution environment with venv bin
-        run_env = dict(env if env is not None else os.environ)
-        if venv_bin not in run_env.get("PATH", "").split(os.pathsep):
-            run_env["PATH"] = f"{venv_bin}{os.pathsep}{run_env.get('PATH', '')}"
+        # Build scrubbed child execution environment with venv bin (A7 isolation)
+        run_env = sanitize_child_env(explicit_env=env, venv_bin=venv_bin)
 
         try:
             # 5. Deterministic execution with shell=False + sandbox containment

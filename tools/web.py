@@ -126,6 +126,8 @@ def curl_web_request(url: str, method: str = "GET", data: str = "", headers: str
             clean_hdr = clean_hdr[3:].strip().strip("'\"")
         argv.extend(["-H", clean_hdr])
     if data:
-        argv.extend(["-d", str(data)])
+        # Defense A9: Use --data-raw to prevent curl from interpreting @filename
+        # as a local file reference, eliminating unauthorized disk exfiltration.
+        argv.extend(["--data-raw", str(data)])
     argv.append(target)
     return run_argv("curl", argv, target=target, timeout=60)

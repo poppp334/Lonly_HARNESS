@@ -18,7 +18,13 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Optional
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from core.config import LonlyConfig, get_config
 
 
 class DiagnosticResult(NamedTuple):
@@ -70,11 +76,12 @@ def check_python_packages() -> list[DiagnosticResult]:
     return results
 
 
-def check_ollama_service() -> list[DiagnosticResult]:
+def check_ollama_service(cfg: Optional[LonlyConfig] = None) -> list[DiagnosticResult]:
     results = []
     import urllib.request
     import urllib.error
 
+    cfg = cfg or get_config()
     try:
         req = urllib.request.Request("http://localhost:11434/api/tags", headers={"User-Agent": "LONLY-Doctor"})
         with urllib.request.urlopen(req, timeout=3.0) as resp:
@@ -82,7 +89,7 @@ def check_ollama_service() -> list[DiagnosticResult]:
             models = [m.get("name", "") for m in data.get("models", [])]
             results.append(DiagnosticResult("Ollama", "Ollama Daemon", "OK", "Running at http://localhost:11434"))
 
-            active_model = os.environ.get("LONLY_MODEL", "phi4-mini")
+            active_model = cfg.model_name
             has_active = any(active_model.split(":")[0] in m for m in models)
             if has_active:
                 results.append(DiagnosticResult("Ollama", f"{active_model} (Generalist)", "OK", "Model ready in local cache"))
@@ -94,13 +101,14 @@ def check_ollama_service() -> list[DiagnosticResult]:
                 else:
                     results.append(DiagnosticResult("Ollama", f"{active_model} (Generalist)", "WARN", f"Missing ('ollama pull {active_model}')"))
 
-            has_specialist = any("privesc-llm-rl" in m for m in models)
+            specialist_model = cfg.specialist_model_name
+            has_specialist = any(specialist_model.split(":")[0] in m for m in models)
             if has_specialist:
-                results.append(DiagnosticResult("Ollama", "privesc-llm-rl (Specialist)", "OK", "Model ready in local cache"))
+                results.append(DiagnosticResult("Ollama", f"{specialist_model} (Specialist)", "OK", "Model ready in local cache"))
             else:
-                results.append(DiagnosticResult("Ollama", "privesc-llm-rl (Specialist)", "WARN", "Optional specialist not loaded (generalist fallback active)"))
+                results.append(DiagnosticResult("Ollama", f"{specialist_model} (Specialist)", "WARN", "Optional specialist not loaded (generalist fallback active)"))
 
-            active_embed = os.environ.get("LONLY_EMBEDDING_MODEL", "nomic-embed-text")
+            active_embed = cfg.embedding_model_name
             has_embed = any(active_embed.split(":")[0] in m for m in models)
             if has_embed:
                 results.append(DiagnosticResult("Ollama", f"{active_embed} (Embedding)", "OK", "Model ready in local cache"))
@@ -146,9 +154,10 @@ def check_system_tools() -> list[DiagnosticResult]:
     return results
 
 
-def check_wordlists_and_knowledge() -> list[DiagnosticResult]:
+def check_wordlists_and_knowledge(cfg: Optional[LonlyConfig] = None) -> list[DiagnosticResult]:
     results = []
     root = Path(__file__).resolve().parent.parent
+    cfg = cfg or get_config()
 
     # Check knowledge base
     knowledge_dir = root / "knowledge"
@@ -166,26 +175,27 @@ def check_wordlists_and_knowledge() -> list[DiagnosticResult]:
         results.append(DiagnosticResult("RAG Knowledge", "ChromaDB Vector Store", "WARN", "Not built (run 'python ingest_knowledge.py')"))
 
     # Check session workspace directory
-    sess_dir = Path.home() / ".lonly" / "sessions"
+    sess_dir = cfg.workspace_dir / "sessions"
     if sess_dir.exists():
         results.append(DiagnosticResult("Workspace", "Session Storage", "OK", str(sess_dir)))
     else:
-        results.append(DiagnosticResult("Workspace", "Session Storage", "OK", "Will be auto-created on first run"))
+        results.append(DiagnosticResult("Workspace", "Session Storage", "OK", f"Will be auto-created at {sess_dir}"))
 
     return results
 
 
-def run_doctor() -> bool:
+def run_doctor(cfg: Optional[LonlyConfig] = None) -> bool:
     print("=" * 72)
     print("  LONLY System Health & Diagnostic Suite (Doctor)")
     print("=" * 72)
 
+    cfg = cfg or get_config()
     all_results = []
     all_results.extend(check_python_environment())
     all_results.extend(check_python_packages())
-    all_results.extend(check_ollama_service())
+    all_results.extend(check_ollama_service(cfg=cfg))
     all_results.extend(check_system_tools())
-    all_results.extend(check_wordlists_and_knowledge())
+    all_results.extend(check_wordlists_and_knowledge(cfg=cfg))
 
     current_cat = ""
     fails = 0
