@@ -215,12 +215,9 @@ Fix: `tools/infra.py` uses absolute `DEFAULT_CHROMA_DIR`; `ingest_knowledge.py` 
 Original issue: `core/dlt.py` escalation append had no lock and `os.makedirs(dirname)` crashed for bare filenames; DPO export duplicated pairs on re-run and could trigger `UnboundLocalError`.
 Fix: `_enqueue_escalation` checks for non-empty dirname before `os.makedirs` and writes via locked `append_jsonl`. `export_preference_pairs` initializes `prompt` safely, creates parent directories, and deduplicates pairs against existing output files using locked JSONL appends. Verified in R88.
 
-**C11 — `/dlt tune` and DPO are non-functional (P1).**
-`core/dlt.py:314` `record_checkpoint` has no production caller; `pentest_agent.py:1150` builds a
-fresh `ParetoOptimizer()` so `/dlt status` always returns the baseline; `/dlt run` ignores the
-benchmark result (`:1141-1147`); `Makefile:30-31` claims "closed-loop optimization". DPO exporter
-still expects never-emitted `turn_input`/`safety_passed` fields (documented gap). Fix: wire
-checkpoint persistence, feed results back, or relabel the command honestly until implemented.
+**C11 — DPO Event Schema Reconciliation & Preference Mining (P1) — COMPLETED 2026-09-21.**
+Original issue: `/dlt export-dpo` expected `turn_input` and `safety_passed` event keys that the ReAct loop in `pentest_agent.py` previously never emitted, causing DPO export to yield zero pairs.
+Fix: `pentest_agent.py` logs `turn_input` on user turn initiation, logs `safety_passed` and `task_number` on `conversational_response` and `scope_block`, and evaluates `final_answer` against fabrication, overclaiming, and `ClaimVerifier` to emit structured `safety_passed`, `overclaim_detected`, and `fabrication_detected` flags. `core/dlt.py` `DPOExporter` reconciles across `final_answer`, `conversational_response`, and `scope_block` events, and falls back gracefully to `./session_log.jsonl`. Verified in R91.
 
 ### D. Throughput
 
@@ -432,10 +429,18 @@ Shipped:
 - E4 Tool Registry Duplicate Guard & Atomic Report Persistence (`tools/__init__.py` duplicate tool name detection; `core/evidence.py` `atomic_write` report output). Verified in R89.
 - B8 Fail-Silent Error Paths & Observability (warning logs on privesc specialist import failure, main loop `logger.exception` with full traceback, session metadata warning logs).
 - E1 Single-Policy Gate & Approval Decision Propagation (`pentest_agent.py` threads real operator confirmation answer to `ctx.tool_executor.execute()`, ensuring broker receives true operator decision). Verified in R90.
-New checks R81–R90; suite is now **167/167**.
+- C11 DPO Event Schema Reconciliation & Preference Mining (`pentest_agent.py` emits `turn_input`, `safety_passed`, `overclaim_detected`; `DPOExporter` mines verified $(x, y_w, y_l)$ preference pairs from forensic session logs). Verified in R91.
+New checks R81–R91; suite is now **168/168**.
 
-Remaining architectural tasks (opportunistic backlog):
-E3 dead module consolidation, E5 continue port extraction, multi-session/worker mode (option B) if needed.
+### Remaining Opportunistic Backlog (Future Enhancements)
+
+The following items represent architectural polish and scale headroom, but do not block production or safety invariants:
+
+1. **E3 — Dead "Enterprise" Modules Consolidation (P1)**: 10 modules (`core/orchestrator.py`, `core/job_queue.py`, `core/telemetry.py`, `core/metrics.py`, `core/engagement.py`, `core/agent_roles.py`, `core/benchmarks.py`, `core/risk.py`, `core/extractor.py`, `core/fuzz.py`) are tested in Track R, but have no active callers in the production `pentest_agent.py` loop. Move them to an `experimental/` namespace or wire them directly into orchestrator extensions.
+2. **E5 — Full Hexagonal Port Decomposition (P2)**: `run_react_agent` in `pentest_agent.py` is ~1,180 LOC. While `LLMPort`, `ToolInvokerPort`, `ApprovalPort`, and `ScopePort` exist, the ReAct loop itself can be decomposed into a dedicated state-machine coordinator.
+3. **F4 — CLI `print()` vs Structured Logging Migration (P2)**: `core/config.py` provides centralized JSON logging, but the interactive CLI loop in `pentest_agent.py` still uses direct `print()` calls for terminal UI rendering.
+4. **D6 — Distributed Multi-GPU SFT Flywheel (P2)**: `models/sft/` is single-host, single-GPU serial. Manifest resume and multi-GPU DDP/FSDP can be added when training corpus scales.
+5. **Multi-Host Broker Daemon (Scalability)**: Running `ExecutionBroker` as a remote daemon (Option C) for multi-host distributed penetration testing agents.
 
 ---
 

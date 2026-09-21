@@ -401,7 +401,10 @@ class DPOExporter:
         """Parses session logs and creates paired preference training instances."""
         target_path = session_logs_path or os.path.expanduser("~/.lonly/sessions")
         if not os.path.exists(target_path):
-            return 0
+            if not session_logs_path and os.path.isfile("session_log.jsonl"):
+                target_path = "session_log.jsonl"
+            else:
+                return 0
 
         pairs_created = 0
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -414,6 +417,8 @@ class DPOExporter:
                 for f in files:
                     if f.endswith(".jsonl"):
                         log_files.append(os.path.join(root, f))
+            if not session_logs_path and os.path.isfile("session_log.jsonl") and "session_log.jsonl" not in log_files:
+                log_files.append("session_log.jsonl")
 
         positive_samples: List[Dict[str, Any]] = []
         negative_samples: List[Dict[str, Any]] = []
@@ -430,13 +435,19 @@ class DPOExporter:
                         event_type = entry.get("type")
                         if event_type == "turn_input":
                             prompt = entry.get("content", "")
-                        elif event_type == "final_answer":
+                        elif event_type in ("final_answer", "conversational_response"):
                             answer = entry.get("content", "")
                             is_safe = entry.get("safety_passed", True)
-                            if is_safe and not entry.get("overclaim_detected", False):
+                            is_overclaim = entry.get("overclaim_detected", False)
+                            is_fab = entry.get("fabrication_detected", False)
+                            if is_safe and not is_overclaim and not is_fab:
                                 positive_samples.append({"prompt": prompt, "answer": answer, "provenance": log_file})
                             else:
                                 negative_samples.append({"prompt": prompt, "answer": answer, "provenance": log_file})
+                        elif event_type == "scope_block" and prompt:
+                            denial = entry.get("content", "")
+                            if denial:
+                                negative_samples.append({"prompt": prompt, "answer": denial, "provenance": log_file})
             except Exception as e:
                 logger.debug(f"Error parsing log file {log_file}: {e}")
 

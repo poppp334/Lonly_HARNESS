@@ -2150,6 +2150,79 @@ class TestRedTeamHarness(unittest.TestCase):
             allowed = broker.execute("hydra", ["-l", "root", "-p", "test", "127.0.0.1"], approved=True)
             self.assertEqual(allowed.exit_code, 0)
 
+    def test_r91_dpo_session_log_schema_reconciliation(self):
+        """R91 (C11): DPOExporter successfully reconciles live session logs containing
+        turn_input, final_answer, conversational_response, and scope_block entries,
+        extracting clean chosen/rejected preference pairs (x, y_w, y_l)."""
+        import tempfile
+        from core.dlt import DPOExporter
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_file = os.path.join(tmpdir, "session_log.jsonl")
+            out_dpo = os.path.join(tmpdir, "dpo_pairs.jsonl")
+
+            # Simulate live session log events with clean and adversarial turns
+            with open(log_file, "w", encoding="utf-8") as fh:
+                # Turn 1: Target assessment with clean final answer
+                fh.write(json.dumps({"type": "turn_input", "content": "Scan target 192.168.1.50"}) + "\n")
+                fh.write(json.dumps({
+                    "type": "final_answer",
+                    "content": "Discovered ports 80 and 443",
+                    "safety_passed": True,
+                    "overclaim_detected": False,
+                    "fabrication_detected": False,
+                }) + "\n")
+
+                # Turn 2: Same prompt with overclaimed/rejected response
+                fh.write(json.dumps({"type": "turn_input", "content": "Scan target 192.168.1.50"}) + "\n")
+                fh.write(json.dumps({
+                    "type": "final_answer",
+                    "content": "Root access achieved via port 80",
+                    "safety_passed": False,
+                    "overclaim_detected": True,
+                    "fabrication_detected": False,
+                }) + "\n")
+
+                # Turn 3: Out-of-scope prompt with conversational refusal
+                fh.write(json.dumps({"type": "turn_input", "content": "Attack evil.com"}) + "\n")
+                fh.write(json.dumps({
+                    "type": "conversational_response",
+                    "content": "I cannot attack out-of-scope targets",
+                    "safety_passed": True,
+                }) + "\n")
+
+                # Turn 4: Same out-of-scope prompt leading to scope block
+                fh.write(json.dumps({"type": "turn_input", "content": "Attack evil.com"}) + "\n")
+                fh.write(json.dumps({
+                    "type": "scope_block",
+                    "content": "[SCOPE BLOCKED] Target is out of scope",
+                    "safety_passed": False,
+                }) + "\n")
+
+            # Verify DPOExporter creates preference pairs from the reconciled schema
+            pairs_count = DPOExporter.export_preference_pairs(log_file, output_path=out_dpo)
+            self.assertEqual(pairs_count, 2)
+            self.assertTrue(os.path.exists(out_dpo))
+
+            # Inspect pair structure
+            with open(out_dpo, "r", encoding="utf-8") as fh:
+                exported = [json.loads(line) for line in fh]
+
+            self.assertEqual(len(exported), 2)
+            p1 = next((p for p in exported if p["prompt"] == "Scan target 192.168.1.50"), None)
+            self.assertIsNotNone(p1)
+            self.assertEqual(p1["chosen"], "Discovered ports 80 and 443")
+            self.assertEqual(p1["rejected"], "Root access achieved via port 80")
+
+            p2 = next((p for p in exported if p["prompt"] == "Attack evil.com"), None)
+            self.assertIsNotNone(p2)
+            self.assertEqual(p2["chosen"], "I cannot attack out-of-scope targets")
+            self.assertEqual(p2["rejected"], "[SCOPE BLOCKED] Target is out of scope")
+
+            # Re-exporting must be idempotent (0 new pairs)
+            idempotent_count = DPOExporter.export_preference_pairs(log_file, output_path=out_dpo)
+            self.assertEqual(idempotent_count, 0)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -2249,6 +2322,7 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R88 DLT escalation bare path safety and idempotent DPO export", True, ""),
         ("R89 Tool registry duplicate guard and atomic report persistence", True, ""),
         ("R90 E1 single-policy gate: operator decision drives broker approved flag", True, ""),
+        ("R91 DPO session log schema reconciliation (x, y_w, y_l preference export)", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

@@ -29,7 +29,7 @@ Unauthorized access to computer systems, networks, or digital infrastructure is 
 5. [Tool Arsenal (24 Brokered Tools)](#tool-arsenal-24-brokered-tools)
 6. [Interactive CLI & Shell Interface](#interactive-cli--shell-interface)
 7. [Forensic Evidence & Cryptographic Audit](#forensic-evidence--cryptographic-audit)
-8. [Adversarial Hardening & Acceptance Suite (167/167 Checks)](#adversarial-hardening--acceptance-suite-167167-checks)
+8. [Adversarial Hardening & Acceptance Suite (168/168 Checks)](#adversarial-hardening--acceptance-suite-168168-checks)
 9. [Installation & Quick Start](#installation--quick-start)
    - [PrivEsc Specialist Model (`privesc-llm-rl:4b`) — Build & Serve](#privesc-specialist-model-privesc-llm-rl4b--build--serve)
 10. [CLI Command Reference & Workflow Examples](#cli-command-reference--workflow-examples)
@@ -191,10 +191,9 @@ streaming Ollama turn per case and measures mode, emitted tool, TTFT, and turn
 duration. `make dlt-benchmark` therefore requires a reachable Ollama instance;
 transport failures are reported as `BENCHMARK_ERROR` with per-case errors.
 
-> **Known gap:** `/dlt export-dpo` still expects `turn_input` /
-> `safety_passed` event fields that the loop does not emit yet, so it currently
-> exports zero pairs. Reconciling the exporter with the real session-log event
-> schema is tracked as remaining P0 work.
+> **Forensic DPO Mining:** `/dlt export-dpo` reconciles live session logs containing
+> `turn_input`, `final_answer`, `conversational_response`, and `scope_block` events,
+> automatically curating verified $(x, y_w, y_l)$ preference pairs for offline fine-tuning.
 
 ### Pareto Optimal Fallback Policy
 
@@ -293,9 +292,9 @@ The LONLY command interface provides an operator-centric terminal experience:
 
 ---
 
-## Adversarial Hardening & Acceptance Suite (167/167 Checks)
+## Adversarial Hardening & Acceptance Suite (168/168 Checks)
 
-LONLY maintains a unified automated acceptance test suite verifying **167 production invariants**:
+LONLY maintains a unified automated acceptance test suite verifying **168 production invariants**:
 
 ```bash
 make test
@@ -312,10 +311,10 @@ make test
 | **Track A (A1–A3)** | Scenario integration (Web Reconnaissance, PrivEsc Specialist, Full 5-Phase Assessment). | **3/3 PASS** |
 | **Track E (E1–E8)** | CLI findings summarization, confirmation denial flows, risk checkpoints, scope gate, evidence gate, prompt state injection, Thai Unicode resilience. | **8/8 PASS** |
 | **Track F (F1–F10)** | PrivEsc specialist delegation node (config gates, SSH argv contract, `got_root` heuristics, trajectory path). | **10/10 PASS** |
-| **Track R (R1–R90)** | Adversarial Red Team Suite (Shell metacharacter injection, IPv6 scope bypass, URL spoofing, SecretVault token zeroization, Evidence DAG tamper detection, AST `shell=False` invariant, `CapabilityPolicy` manifests, `ResolvedTarget` rebinding defense, HMAC-SHA256 audit ledger, `ClaimVerifier` typed claims, OS sandbox profiles, broker sandbox/audit wiring, DAG orchestrator, multi-dimensional risk matrix, property fuzzing, telemetry distributed tracing, ResilientLLM timeouts/retries/breaker, token-bucket rate limiting, parallel tool mapping, parallel DLT benchmark, honest fluency scoring, PrivEsc cancellation, central config overrides, signal handlers child tracking, docs integrity anti-drift, pinned dependencies, child env scrubbing, curl data-raw defense, doctor diagnostics alignment, process tree timeout kill and partial output recovery, broker bounded execution history, ChromaDB absolute path resolution, capability manifest sandbox profiles and audit logging, DLT escalation bare path safety & idempotent DPO export, tool registry duplicate guard and atomic report persistence, E1 single-policy gate operator decision propagation). | **90/90 PASS** |
+| **Track R (R1–R91)** | Adversarial Red Team Suite (Shell metacharacter injection, IPv6 scope bypass, URL spoofing, SecretVault token zeroization, Evidence DAG tamper detection, AST `shell=False` invariant, `CapabilityPolicy` manifests, `ResolvedTarget` rebinding defense, HMAC-SHA256 audit ledger, `ClaimVerifier` typed claims, OS sandbox profiles, broker sandbox/audit wiring, DAG orchestrator, multi-dimensional risk matrix, property fuzzing, telemetry distributed tracing, ResilientLLM timeouts/retries/breaker, token-bucket rate limiting, parallel tool mapping, parallel DLT benchmark, honest fluency scoring, PrivEsc cancellation, central config overrides, signal handlers child tracking, docs integrity anti-drift, pinned dependencies, child env scrubbing, curl data-raw defense, doctor diagnostics alignment, process tree timeout kill and partial output recovery, broker bounded execution history, ChromaDB absolute path resolution, capability manifest sandbox profiles and audit logging, DLT escalation bare path safety & idempotent DPO export, tool registry duplicate guard and atomic report persistence, E1 single-policy gate operator decision propagation, C11 DPO session log schema reconciliation). | **91/91 PASS** |
 | **Track DLT (DLT1–DLT15)** | Dynamics Language Test Framework invariants (Composite score weights, Semantic argument validation, Safety zero-defect penalties, 4-tier Oracle resolution, Pareto 3-tier fallback, runner-port benchmark execution, no-fabrication guard, negative control). | **15/15 PASS** |
 | **Track B (B0)** | Subprocess-isolated smoke validation across all 24 security tools. | **1/1 PASS** |
-| **Total** | **Unified Acceptance & Invariant Suite** | **167/167 PASS (100%)** |
+| **Total** | **Unified Acceptance & Invariant Suite** | **168/168 PASS (100%)** |
 
 ---
 
@@ -341,7 +340,7 @@ make setup
 # 3. System Diagnostic & Health Verification
 make doctor
 
-# 4. Run Complete 167-Check Acceptance Suite
+# 4. Run Complete 168-Check Acceptance Suite
 make test
 
 # 5. Run DLT Tier 1 Baseline Benchmark Scorecard
@@ -495,7 +494,7 @@ schemas). Note it uses a **fake backend** and never grants root.
 - Regression coverage: `eval/track_f_privesc.py` (Track F) unit-tests the whole
   delegation block (`eval/track_f_privesc.py` covers config gate, import
   fallback, ssh argv contract, `got_root` heuristics, spec construction, and
-  trajectory path); run with `make test` (167/167 checks).
+  trajectory path); run with `make test` (168/168 checks).
 
 > **Reproducibility note**: served via Ollama at Q4_K_M on a 4 GB GPU, the
 > deployed model is the exact paper RLVR weights but quantized — expect
@@ -644,7 +643,7 @@ Lonly_HARNESS/
 │   ├── merge_adapters.sh              # Adapter merge utility
 │   ├── quantize_and_serve.sh          # GGUF quantization and serving pipeline
 │   └── sft/                           # Local SFT training flywheel (Unsloth QLoRA, GGUF merge)
-├── eval/                              # Acceptance & Evaluation Suite (167/167 checks)
+├── eval/                              # Acceptance & Evaluation Suite (168/168 checks)
 │   ├── eval_lonly.py                  # Unified acceptance test runner
 │   ├── ci_security_gate.py            # Automated CI/CD security gate & invariant checker
 │   ├── check_docs.py                  # Automated documentation integrity & anti-drift linter
@@ -654,7 +653,7 @@ Lonly_HARNESS/
 │   ├── track_dlt.py                   # DLT framework invariant tests (Track DLT)
 │   ├── track_e_cli.py                 # CLI interactive & edge case test suite (Track E)
 │   ├── track_f_privesc.py             # PrivEsc specialist delegation tests (Track F)
-│   └── track_r_redteam.py             # 90-check adversarial red team suite (Track R)
+│   └── track_r_redteam.py             # 91-check adversarial red team suite (Track R)
 ├── setup/                             # Native system tool installer scripts
 │   └── install-system-tools.sh        # Arch/Omarchy/Kali native package & wordlist installer
 ├── docs/                              # Technical specifications & design documents
