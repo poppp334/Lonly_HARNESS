@@ -84,7 +84,10 @@ class ScoringEngine:
     WEIGHT_PERFORMANCE: float = 0.20
     WEIGHT_FLUENCY: float = 0.10
 
-    VALID_PORT_KEYWORDS = {"top-1000", "top-100", "all", "1-65535", "80,443", "80,443,8080"}
+    VALID_PORT_KEYWORDS = {
+        "top-1000", "top-100", "all", "1-65535", "80,443", "80,443,8080",
+        "common", "web", "ad", "infra", "db", "database", "default", "fast", "quick",
+    }
 
     @classmethod
     def validate_runtime_arguments(cls, tool_name: str, tool_args: Dict[str, Any]) -> Tuple[bool, str]:

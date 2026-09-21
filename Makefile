@@ -58,8 +58,15 @@ setup:
 sessions:
 	@$(PYTHON) -c "from core.session import SessionManager; sm = SessionManager(); print('\n=== Stored Sessions ==='); [print(f\"- {s['session_id']}: {s['title']} ({s['message_count']} msgs)\") for s in sm.list_sessions()]"
 
+lint:
+	@echo "[+] Running ruff lint check..."
+	@$(PYTHON) -m ruff check core/ tools/ eval/ models/ pentest_agent.py
+	@echo "[+] Running documentation integrity check..."
+	@$(PYTHON) eval/check_docs.py
+
 clean:
 	@rm -rf __pycache__ core/__pycache__ tools/__pycache__ eval/__pycache__ models/__pycache__ models/sft/__pycache__
-	@rm -rf unsloth_compiled_cache models/sft/unsloth_compiled_cache
-	@rm -f session_log.jsonl
-	@echo "[+] Cleaned temporary files and bytecode caches."
+	@rm -rf unsloth_compiled_cache models/sft/unsloth_compiled_cache .pytest_cache .ruff_cache
+	@rm -rf runs/ .lonly/
+	@rm -f session_log.jsonl *.wal* *.log dlt_escalation_queue.jsonl dpo_preference_pairs.jsonl
+	@echo "[+] Cleaned temporary files, run logs, and bytecode caches."

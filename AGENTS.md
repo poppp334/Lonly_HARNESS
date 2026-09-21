@@ -30,6 +30,8 @@ Lonly_HARNESS/
 │   ├── session_context.py    # Per-engagement state + per-session broker/scope
 │   ├── storage.py            # Atomic writes, locked JSONL appends, 0700 dirs
 │   ├── ports.py              # LLM / tool / evidence / approval / scope ports
+│   ├── config.py             # Centralized runtime configuration & structured logging
+│   ├── signals.py            # Graceful signal handling (SIGINT/SIGTERM) & process cleanup
 │   ├── model_client.py       # Resilient LLM wrapper (timeouts, retries, circuit breaker)
 │   ├── ratelimit.py          # Thread-safe token-bucket rate limiter
 │   ├── tool_pool.py          # Bounded concurrent worker execution pool
@@ -50,17 +52,21 @@ Lonly_HARNESS/
 │   ├── analyze_benchmark.py  # Trajectory and benchmark log analyzer
 │   └── sft/                  # Local SFT training flywheel (Unsloth QLoRA, GGUF merge)
 ├── eval/                     # Offline test and evaluation harness
-│   ├── eval_lonly.py         # Consolidated 153-check test runner
+│   ├── eval_lonly.py         # Consolidated 157-check test runner
+│   ├── ci_security_gate.py   # Automated CI/CD security gate & invariant checker
+│   ├── check_docs.py         # Automated documentation integrity & anti-drift linter
 │   ├── track_a_runner.py     # Scenario integration suite (S1, S2, S4)
 │   ├── track_b_worker.py     # Subprocess-isolated tool smoke tests (24/24)
 │   ├── track_c_scorer.py     # Trajectory and loop quality scorer
 │   ├── track_e_cli.py        # CLI interaction and edge-case unit tests
 │   ├── track_f_privesc.py    # PrivEsc specialist delegation tests
-│   ├── track_r_redteam.py    # Adversarial red-team / security boundary suite
+│   ├── track_r_redteam.py    # Adversarial red-team / security boundary suite (80 checks)
 │   └── track_dlt.py          # DLT framework invariants
 ├── knowledge/                # Markdown cheat sheets for ChromaDB RAG
 ├── ingest_knowledge.py       # ChromaDB vector store ingestion script
-├── requirements.txt          # Python dependencies
+├── requirements.txt          # Pinned core Python dependencies
+├── requirements-sft.txt      # SFT training dependencies
+├── requirements-dev.txt      # Development & linting dependencies
 └── README.md                 # Production documentation
 ```
 
@@ -84,7 +90,7 @@ Lonly_HARNESS/
 
 ## 4. Engineering & Contribution Rules
 
-1. **Zero Unverified Commits**: Run `eval/eval_lonly.py` before committing. All 153 checks must pass with exit code 0.
+1. **Zero Unverified Commits**: Run `eval/eval_lonly.py` before committing. All 157 checks must pass with exit code 0.
 2. **Modular Tool Contracts**: Tools must be defined under `tools/` with strict Pydantic `args_schema` and registered in `tools/__init__.py`. Never place raw tool execution code directly in `pentest_agent.py`.
 3. **Target Sanitization**: All host and URL parameters must pass through `clean_target()` or `ensure_url()` in `tools/base.py` to prevent formatting failures.
 4. **Safety Gating**:

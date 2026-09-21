@@ -122,12 +122,9 @@ claim. Fix: require `LONLY_AUDIT_KEY` or generate a 0600 key file on first run; 
 `LONLY_PRIVESC_PASSWORD`, cloud/API tokens to the target's tooling. Fix: allowlist (`PATH`, `HOME`,
 `LANG`, `TERM`, tool-specific vars) instead of copying `os.environ`.
 
-**A8 — Broken recon defaults (P0).**
-`tools/recon.py:106` uses `re.match` but `re` is never imported → `NameError` for numeric ports
-(common case). `tools/recon.py:34` schema default `"top-1000"` is formatted as `-ptop-1000`
-(`:168`); the function default `"1-65535"` is unreachable through the registry.
-Fix: import/remove `re`; normalize keyword defaults to a valid masscan range; add a registry-level
-argument-contract test (see E4/F2).
+**A8 — Recon defaults and port profiles (P0).**
+Original issue: `tools/recon.py` had missing `re` import and masscan `-ptop-1000` crash, which previously fell back to aggressive `1-65535` or blind sequential `1-1000` at `rate=1000` pkts/s (causing network flooding, firewall drops, and missed critical services like MSSQL/MySQL/RDP).
+Fix: Replaced aggressive recon defaults with smart, curated, non-damaging service profiles (`TOP_100_PORTS`, `TOP_COMMON_PORTS`, `WEB_PORTS`, `INFRA_AD_PORTS`, `DATABASE_PORTS`), polite Nmap timing (`T3`), safe Masscan rate (250 pps), and non-exhausting Rustscan batch sizes (300). Verified in R47.
 
 **A9 — `curl -d @file` exfiltration path (P1, OBSERVED capability).**
 `tools/web.py:129` passes LLM `data` straight to `-d`; curl reads `@path` from disk. Fix: reject
@@ -426,7 +423,11 @@ budget; DLT parallelism + honest fluency; broker rate limiting.
 Acceptance: two targets scan concurrently; prompt never exceeds budget; benchmark wall time scales
 sub-linearly; hung model call aborts in bounded time.
 
-### Phase 3 — Delivery and ops (est. 3–5 days)
+### Phase 3 — Delivery and ops (est. 3–5 days) — COMPLETED 2026-09-21
+Shipped: `.github/workflows/ci.yml` (GitHub Actions workflow running linting, CI security gate, and acceptance suite on push/PR); `core/config.py` (`LonlyConfig` centralized strongly-typed configuration with environment overrides and standardized structured logging); `core/signals.py` (`install_signal_handlers`, active child process group tracking and cleanup, graceful termination running store flush callbacks); `eval/check_docs.py` (anti-drift doc linter preventing obsolete model names and verifying suite counts); pinned `requirements.txt` with `requirements-sft.txt` and `requirements-dev.txt` split; `pyproject.toml` with `ruff` configuration; `Makefile` updated with `make lint` and comprehensive `make clean`; `.gitignore` extended with logs, WALs, venvs, and caches.
+New checks R77–R80; suite is now **157/157**.
+
+Original plan:
 F1–F6, F8, F9; CI on push/PR; pins + lockfile; central `core/config.py`; logging; signal handling;
 docs sweep + CI grep; history/`.gitignore` cleanup.
 Acceptance: fresh clone → `make setup && make test` green in CI; `make lint` exists; docs grep

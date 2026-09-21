@@ -132,6 +132,14 @@ machine-checkable acceptance test in `eval/`.
 - `DLTEngine.run_benchmark` evaluates test cases concurrently using bounded worker threads and scores empty responses honestly with `0.0` fluency.
 - `PrivescSpecialist` supports non-blocking cooperative cancellation via `cancel_event`.
 
+### N17 — Delivery, Operations & Hardening (`.github/workflows/ci.yml`, `core/config.py`, `core/signals.py`, `eval/check_docs.py`) [Implemented & Verified]
+- Automated GitHub Actions CI/CD pipeline (`.github/workflows/ci.yml`) runs linting, security gates, and acceptance tests on push/PR.
+- `core/config.py` centralizes runtime configuration with environment overrides and structured logging.
+- `core/signals.py` traps `SIGINT` / `SIGTERM` to safely terminate child process groups and flush session and audit stores.
+- `eval/check_docs.py` enforces zero-drift documentation invariants and test count consistency.
+- Dependencies pinned in `requirements.txt`, with SFT dependencies cleanly separated into `requirements-sft.txt`.
+- Codebase configured with `ruff` (`pyproject.toml`), `make lint`, enhanced `make clean`, and comprehensive `.gitignore`.
+
 ## Debt policy (enforced by eval/)
 
 1. No new runtime dependency; stdlib + existing venv only.

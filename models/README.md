@@ -86,7 +86,7 @@ Notes:
   vLLM serving is a Phase 1 verification item.
 
 VRAM: Q4_K_M ≈ 2.6 GB + 8k-context KV cache — fits the 4 GB RTX 3050.
-Only one 4B model is resident at a time; Ollama swaps gemma3 ↔ privesc in seconds.
+Only one 4B model is resident at a time; Ollama swaps phi4-mini ↔ privesc in seconds.
 
 ## Scalability (Phase 3 flywheel)
 

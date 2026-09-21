@@ -15,26 +15,66 @@ from langchain_core.tools import tool
 from tools.base import run_argv, clean_target, ensure_url
 
 
+# Smart, high-signal curated port sets for safe, non-aggressive real-world reconnaissance
+TOP_100_PORTS = (
+    "7,9,13,21-23,25-26,37,53,79-81,88,106,110-111,113,119,135,139,143-144,179,199,389,427,"
+    "443-445,465,513-515,543-544,548,554,587,631,646,873,990,993,995,1025-1029,1110,1433,"
+    "1720,1723,1755,1900,2000-2001,2049,2121,2717,3000,3128,3306,3389,3986,4899,5000,5009,"
+    "5051,5060,5101,5190,5357,5432,5631,5666,5800,5900,5985,6000-6001,6646,7070,8000,8008,"
+    "8080-8081,8443,8888,9100,9999-10000,32768,49152-49157"
+)
+
+TOP_COMMON_PORTS = (
+    "21,22,23,25,53,80,88,110,111,135,139,143,389,443,445,465,587,636,993,995,"
+    "1433,1521,2049,3306,3389,5432,5900,5985,5986,6379,8000,8080,8443,8888,9000,27017"
+)
+
+WEB_PORTS = "80,443,8000,8080,8443,8888,9000"
+INFRA_AD_PORTS = "53,88,135,139,389,445,464,636,3268,3269,5985,5986"
+DATABASE_PORTS = "1433,1521,3306,5432,6379,27017"
+
+
 class NmapScanInput(BaseModel):
     target: str = Field(..., description="The target IP, hostname, or CIDR subnet to scan.")
-    ports: Optional[str] = Field(default=None, description="Ports to scan: 'top-1000' (default, fast/clean), 'top-100', 'web' (80,443,8080,8443), 'common', specific ports (e.g. '80,443,22'), or '1-65535'.")
+    ports: Optional[str] = Field(
+        default=None,
+        description=(
+            "Ports to scan: 'top-100' (default smart/fast curated services), 'top-1000', "
+            "'common', 'web', 'ad', 'db', specific ports (e.g. '80,443,22'), or '1-65535'."
+        ),
+    )
     scan_type: str = Field(default="Version", description="Nmap scan type: 'SYN', 'Connect', 'Version', 'OS', 'Aggressive'.")
-    timing: str = Field(default="T4", description="Nmap timing template: 'T0' to 'T5'. Default is T4.")
+    timing: str = Field(default="T3", description="Nmap timing template: 'T0' to 'T5'. Default is T3 (normal, production-safe).")
     use_default_scripts: bool = Field(default=False, description="Set True to enable default script scanning (-sC).")
 
 
 class RustScanInput(BaseModel):
     target: str = Field(..., description="The target IP address or hostname to scan.")
-    ports: Optional[str] = Field(default=None, description="Port range or alias (e.g. 'top-1000', 'top-100', 'web', '80,443', '1-65535'). If None, scans top standard ports.")
+    ports: Optional[str] = Field(
+        default=None,
+        description=(
+            "Port range or alias (e.g. 'top-100', 'top-1000', 'common', 'web', 'ad', 'db', "
+            "'80,443', '1-65535'). If None, scans top standard ports."
+        ),
+    )
     scan_version: bool = Field(default=False, description="Set True to run deep Nmap version detection on discovered ports. Default is False.")
-    ulimit: Optional[int] = Field(default=2000, description="Max open files limit (default 2000 for network safety).")
-    batch_size: Optional[int] = Field(default=500, description="Batch size of ports to scan at once (default 500 to prevent firewall rate-limiting).")
+    ulimit: Optional[int] = Field(default=1500, description="Max open files limit (default 1500 for network safety).")
+    batch_size: Optional[int] = Field(default=300, description="Batch size of ports to scan at once (default 300 to prevent firewall rate-limiting).")
 
 
 class MasscanInput(BaseModel):
     target: str = Field(..., description="The target IP address or CIDR range to scan.")
-    ports: Optional[str] = Field(default="top-1000", description="Port range to scan (e.g. 'top-1000', '80,443', '1-65535').")
-    rate: int = Field(default=1000, description="Packet transmission rate per second.")
+    ports: Optional[str] = Field(
+        default="top-100",
+        description=(
+            "Ports to scan: 'top-100' (default smart/safe curated services), 'common', "
+            "'web', 'ad', 'db', specific ports (e.g. '80,443'), or '1-65535' for full sweep."
+        ),
+    )
+    rate: int = Field(
+        default=250,
+        description="Packet transmission rate per second (default 250 pps for safe, non-disruptive production recon).",
+    )
 
 
 class WhatWebInput(BaseModel):
@@ -59,18 +99,18 @@ class KerbruteInput(BaseModel):
 
 
 @tool(args_schema=NmapScanInput)
-def nmap_security_scan(target: str, ports: Optional[str] = None, scan_type: str = "Version", timing: str = "T4", use_default_scripts: bool = False) -> str:
+def nmap_security_scan(target: str, ports: Optional[str] = None, scan_type: str = "Version", timing: str = "T3", use_default_scripts: bool = False) -> str:
     """Use this tool to perform network exploration and vulnerability/port scanning using Nmap."""
     host = clean_target(target)
     
     # Resilient timing normalization
-    t_clean = timing.strip().upper() if isinstance(timing, str) and timing.strip() else "T4"
+    t_clean = timing.strip().upper() if isinstance(timing, str) and timing.strip() else "T3"
     if t_clean in ("T0", "T1", "T2", "T3", "T4", "T5"):
         timing_flag = f"-{t_clean}"
     elif t_clean in ("0", "1", "2", "3", "4", "5"):
         timing_flag = f"-T{t_clean}"
     else:
-        timing_flag = "-T4"
+        timing_flag = "-T3"
 
     # Resilient scan type normalization
     st_clean = scan_type.strip().lower() if isinstance(scan_type, str) and scan_type.strip() else "version"
@@ -96,15 +136,19 @@ def nmap_security_scan(target: str, ports: Optional[str] = None, scan_type: str 
     if ports:
         clean_p = str(ports).strip().lower()
         if clean_p in ("all", "1-65535", "full", "*"):
-            argv.extend(["-p-", "--min-rate", "1000"])  # Prevent slow timeout when scanning all 65k ports
+            argv.append("-p-")  # Full scan without aggressive packet flooding
         elif clean_p in ("top-100", "top100", "quick", "fast"):
             argv.extend(["--top-ports", "100"])
         elif clean_p in ("top-1000", "top1000", "top", "basic", "default", "none", "standard", "specific ports", "specific"):
             pass  # Scan top default 1000 ports safely
         elif clean_p in ("web", "http", "https"):
-            argv.extend(["-p", "80,443,8080,8443,8000,8888"])
+            argv.extend(["-p", WEB_PORTS])
         elif clean_p in ("common", "services"):
-            argv.extend(["-p", "21,22,23,25,53,80,110,111,139,143,443,445,993,995,3306,3389,8080"])
+            argv.extend(["-p", TOP_COMMON_PORTS])
+        elif clean_p in ("ad", "infra", "domain", "active_directory", "kerberos", "ldap"):
+            argv.extend(["-p", INFRA_AD_PORTS])
+        elif clean_p in ("db", "database", "sql"):
+            argv.extend(["-p", DATABASE_PORTS])
         elif re.match(r"^[\d,\-\s]+$", clean_p):
             argv.extend(["-p", clean_p.replace(" ", "")])
         else:
@@ -121,12 +165,16 @@ def _format_rustscan_ports(ports: Optional[str]) -> list[str]:
     p = ports.strip().lower()
     if p in ("top", "top1000", "top-1000", "top 1000", "basic", "default", "standard", "none"):
         return ["--top"]
-    if p in ("top-100", "top100", "quick"):
-        return ["-r", "1-100"]
+    if p in ("top-100", "top100", "quick", "fast"):
+        return ["-p", TOP_100_PORTS]
     if p in ("web", "http", "https"):
-        return ["-p", "80,443,8080,8443,8000,8888"]
+        return ["-p", WEB_PORTS]
     if p in ("common", "services"):
-        return ["-p", "21,22,23,25,53,80,110,111,139,143,443,445,993,995,3306,3389,8080"]
+        return ["-p", TOP_COMMON_PORTS]
+    if p in ("ad", "infra", "domain", "active_directory", "kerberos", "ldap"):
+        return ["-p", INFRA_AD_PORTS]
+    if p in ("db", "database", "sql"):
+        return ["-p", DATABASE_PORTS]
     if p in ("all", "1-65535", "full", "65535", "*"):
         return ["-r", "1-65535"]
     if "-" in p and "," not in p:
@@ -160,15 +208,31 @@ def rustscan_port_scan(
     return run_argv("rustscan", argv, target=host, timeout=60)
 
 
+def _format_masscan_ports(ports: Optional[str]) -> str:
+    """Intelligently maps port inputs to valid, non-damaging masscan port specifications."""
+    if not ports:
+        return TOP_100_PORTS
+    p = ports.strip().lower()
+    if p in ("top-100", "top100", "quick", "fast", "top", "top-1000", "top1000", "basic", "default", "standard", "none"):
+        return TOP_100_PORTS
+    if p in ("common", "services"):
+        return TOP_COMMON_PORTS
+    if p in ("web", "http", "https"):
+        return WEB_PORTS
+    if p in ("ad", "infra", "domain", "active_directory", "kerberos", "ldap"):
+        return INFRA_AD_PORTS
+    if p in ("db", "database", "sql"):
+        return DATABASE_PORTS
+    if p in ("all", "1-65535", "full", "65535", "*"):
+        return "1-65535"
+    return p.replace(" ", "")
+
+
 @tool(args_schema=MasscanInput)
-def masscan_port_scan(target: str, ports: Optional[str] = "1-65535", rate: int = 1000) -> str:
-    """Masscan for extremely fast asynchronous port scanning of large networks and CIDR blocks."""
+def masscan_port_scan(target: str, ports: Optional[str] = "top-100", rate: int = 250) -> str:
+    """Masscan for fast, non-aggressive asynchronous port scanning of subnets and CIDR blocks."""
     host = clean_target(target)
-    p_val = ports if ports else "1-65535"
-    if p_val.lower() in ("all", "full", "*"):
-        p_val = "1-65535"
-    elif p_val.lower() in ("top-1000", "top1000", "top", "basic", "default", "none", "standard"):
-        p_val = "1-1000"
+    p_val = _format_masscan_ports(ports)
     argv = [host, f"-p{p_val}", f"--rate={rate}", "--wait=0"]
     return run_argv("masscan", argv, target=host, timeout=120)
 

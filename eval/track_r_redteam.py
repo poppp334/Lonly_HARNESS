@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import unittest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1016,9 +1017,9 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertNotIn("successfully", res.output)
 
     def test_r47_recon_default_argument_contracts(self):
-        """R47: Nmap numeric ports and masscan defaults produce valid argv."""
+        """R47: Nmap numeric ports and masscan defaults produce valid, safe, non-aggressive argv."""
         from tools import base as tb
-        from tools.recon import masscan_port_scan, nmap_security_scan
+        from tools.recon import masscan_port_scan, nmap_security_scan, rustscan_port_scan, TOP_100_PORTS
 
         calls: list[tuple[str, list[str]]] = []
 
@@ -1030,15 +1031,36 @@ class TestRedTeamHarness(unittest.TestCase):
         try:
             nmap_security_scan.invoke({"target": "127.0.0.1", "ports": "80,443"})
             masscan_port_scan.invoke({"target": "127.0.0.1"})
+            masscan_port_scan.invoke({"target": "127.0.0.1", "ports": "web"})
+            rustscan_port_scan.invoke({"target": "127.0.0.1", "ports": "top-100"})
         finally:
             tb.reset_executor()
 
+        # 1. Nmap numeric ports and timing
         nmap_argv = calls[0][1]
         self.assertIn("-p", nmap_argv)
         self.assertIn("80,443", nmap_argv)
+        self.assertIn("-T3", nmap_argv)
+
+        # 2. Masscan default: smart curated top ports, safe rate (250 pps), not aggressive
         mass_argv = calls[1][1]
         self.assertFalse(any("top" in a.lower() for a in mass_argv), mass_argv)
         self.assertTrue(any(a.startswith("-p") for a in mass_argv), mass_argv)
+        self.assertIn("--rate=250", mass_argv)
+        self.assertFalse(any("1-65535" in a for a in mass_argv), "Default masscan should not sweep 1-65535")
+        self.assertFalse(any("1-1000" in a for a in mass_argv), "Default masscan should not use blind sequential 1-1000")
+        p_arg = [a for a in mass_argv if a.startswith("-p")][0]
+        for essential_port in ("80", "443", "445", "3389"):
+            self.assertIn(essential_port, p_arg)
+
+        # 3. Masscan smart profile 'web'
+        mass_web_argv = calls[2][1]
+        self.assertTrue(any("80,443" in a for a in mass_web_argv), mass_web_argv)
+
+        # 4. Rustscan top-100 maps to curated ports rather than sequential 1-100
+        rust_argv = calls[3][1]
+        self.assertIn("-p", rust_argv)
+        self.assertNotIn("-r", rust_argv)
 
     def test_r48_unknown_capabilities_fail_closed(self):
         """R48: Unmanifested capabilities are denied; production binaries stay manifested."""
@@ -1608,7 +1630,8 @@ class TestRedTeamHarness(unittest.TestCase):
     def test_r74_dlt_benchmark_parallel_execution(self):
         """R74: DLTEngine.run_benchmark executes with parallel workers and produces valid scores."""
         from core.dlt import DLTEngine, DLTActualResult
-        import tempfile, json
+        import tempfile
+        import json
 
         class SlowFakeRunner:
             def run_case(self, case):
@@ -1643,7 +1666,8 @@ class TestRedTeamHarness(unittest.TestCase):
     def test_r75_dlt_empty_response_zero_fluency(self):
         """R75: DLTEngine scores empty/None response_text as 0.0 fluency, refusing to score prompt."""
         from core.dlt import DLTEngine, DLTActualResult
-        import tempfile, json
+        import tempfile
+        import json
 
         class EmptyRunner:
             def run_case(self, case):
@@ -1687,6 +1711,62 @@ class TestRedTeamHarness(unittest.TestCase):
         res = spec.run()
         self.assertFalse(res["success"])
         self.assertIn("cancelled", res["reason"])
+
+    def test_r77_central_configuration_and_overrides(self):
+        """R77: core.config provides strongly-typed configuration with env overrides."""
+        from core.config import get_config, reset_config
+
+        reset_config()
+        try:
+            with patch.dict(os.environ, {"LONLY_MODEL": "test-model:latest", "LONLY_LLM_TIMEOUT": "45.0"}):
+                reset_config()
+                cfg = get_config()
+                self.assertEqual(cfg.model_name, "test-model:latest")
+                self.assertEqual(cfg.llm_timeout, 45.0)
+        finally:
+            reset_config()
+
+    def test_r78_signal_handler_process_tracking_and_cleanups(self):
+        """R78: core.signals registers callbacks, tracks child PIDs, and runs cleanups."""
+        from core.signals import (
+            register_child_pid, unregister_child_pid,
+            register_cleanup_callback, unregister_cleanup_callback,
+            run_cleanups, _ACTIVE_PIDS,
+        )
+
+        cleaned = []
+        def my_cleanup():
+            cleaned.append(True)
+
+        register_cleanup_callback(my_cleanup)
+        try:
+            register_child_pid(999999)
+            self.assertIn(999999, _ACTIVE_PIDS)
+            unregister_child_pid(999999)
+            self.assertNotIn(999999, _ACTIVE_PIDS)
+
+            run_cleanups()
+            self.assertEqual(cleaned, [True])
+        finally:
+            unregister_cleanup_callback(my_cleanup)
+
+    def test_r79_documentation_integrity_anti_drift_gate(self):
+        """R79: eval.check_docs validates no forbidden model drift and suite count alignment."""
+        from eval.check_docs import check_docs
+        self.assertTrue(check_docs(), "check_docs should pass with 0 drift violations")
+
+    def test_r80_dependency_specs_and_sft_split(self):
+        """R80: requirements.txt is pinned and SFT stack is cleanly isolated into requirements-sft.txt."""
+        root = Path(__file__).resolve().parent.parent
+        req_core = (root / "requirements.txt").read_text(encoding="utf-8")
+        req_sft = (root / "requirements-sft.txt").read_text(encoding="utf-8")
+        pyproj = (root / "pyproject.toml").read_text(encoding="utf-8")
+
+        self.assertIn("langchain>=", req_core)
+        self.assertIn("pydantic>=", req_core)
+        self.assertIn("unsloth", req_sft)
+        self.assertIn("torch>=", req_sft)
+        self.assertIn("[tool.ruff]", pyproj)
 
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
@@ -1773,6 +1853,10 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R74 DLT benchmark evaluates cases concurrently", True, ""),
         ("R75 DLT scores empty response as zero fluency", True, ""),
         ("R76 Privesc specialist cancellable execution", True, ""),
+        ("R77 Central configuration and environment overrides", True, ""),
+        ("R78 Signal handlers child tracking and cleanups", True, ""),
+        ("R79 Documentation integrity and anti-drift gate", True, ""),
+        ("R80 Pinned dependencies and SFT requirement separation", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

@@ -1,27 +1,25 @@
-# LONLY Pentest Agent - Python Dependencies
+# LONLY Pentest Agent - Core Production Dependencies (Pinned)
 
-# LangChain Core
-langchain
-langchain-core
-langchain-community
-langchain-ollama
-langchain-chroma
+# LangChain Orchestration & Ollama Bridges
+langchain>=1.4.0,<2.0.0
+langchain-core>=1.6.0,<2.0.0
+langchain-community>=0.4.0,<1.0.0
+langchain-ollama>=1.1.0,<2.0.0
+langchain-chroma>=1.1.0,<2.0.0
+langchain-text-splitters>=1.1.0,<2.0.0
 
-# Vector Store & Embeddings (RAG via Ollama)
-chromadb
+# Vector Knowledge Base & Embeddings
+chromadb>=1.5.0,<2.0.0
 
-# Graph Analysis (BloodHound)
-networkx
+# Active Directory & Network Graph Analysis
+networkx>=3.4.0,<4.0.0
 
-# Data Validation
-pydantic
+# Data Validation & Schemas
+pydantic>=2.10.0,<3.0.0
 
-# HTTP Requests (CVE Lookup)
-requests
+# HTTP Client (CVE/NVD Lookups)
+requests>=2.32.0,<3.0.0
 
-# Network Protocols & Web Testing
-impacket
-sqlmap
-
-# Standard library (no install needed):
-# cmd, subprocess, shlex, os, zipfile, json, time, re
+# Network Protocols & Automation
+impacket>=0.13.0
+sqlmap>=1.10.0

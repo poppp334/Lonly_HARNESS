@@ -29,7 +29,7 @@ Unauthorized access to computer systems, networks, or digital infrastructure is 
 5. [Tool Arsenal (24 Brokered Tools)](#tool-arsenal-24-brokered-tools)
 6. [Interactive CLI & Shell Interface](#interactive-cli--shell-interface)
 7. [Forensic Evidence & Cryptographic Audit](#forensic-evidence--cryptographic-audit)
-8. [Adversarial Hardening & Acceptance Suite (153/153 Checks)](#adversarial-hardening--acceptance-suite-153153-checks)
+8. [Adversarial Hardening & Acceptance Suite (157/157 Checks)](#adversarial-hardening--acceptance-suite-157157-checks)
 9. [Installation & Quick Start](#installation--quick-start)
    - [PrivEsc Specialist Model (`privesc-llm-rl:4b`) — Build & Serve](#privesc-specialist-model-privesc-llm-rl4b--build--serve)
 10. [CLI Command Reference & Workflow Examples](#cli-command-reference--workflow-examples)
@@ -481,7 +481,7 @@ schemas). Note it uses a **fake backend** and never grants root.
 - Regression coverage: `eval/track_f_privesc.py` (Track F) unit-tests the whole
   delegation block (`eval/track_f_privesc.py` covers config gate, import
   fallback, ssh argv contract, `got_root` heuristics, spec construction, and
-  trajectory path); run with `make test` (153/153 checks).
+  trajectory path); run with `make test` (157/157 checks).
 
 > **Reproducibility note**: served via Ollama at Q4_K_M on a 4 GB GPU, the
 > deployed model is the exact paper RLVR weights but quantized — expect
@@ -619,15 +619,16 @@ Lonly_HARNESS/
 │   ├── benchmark_runner.py            # Benchmark evaluation runner
 │   ├── analyze_benchmark.py           # Trajectory and benchmark log analyzer
 │   └── sft/                           # Local SFT training flywheel (Unsloth QLoRA, GGUF merge)
-├── eval/                              # Acceptance & Evaluation Suite (153/153 checks)
+├── eval/                              # Acceptance & Evaluation Suite (157/157 checks)
 │   ├── eval_lonly.py                  # Unified acceptance test runner
 │   ├── ci_security_gate.py            # Automated CI/CD security gate & invariant checker
+│   ├── check_docs.py                  # Automated documentation integrity & anti-drift linter
 │   ├── track_a_runner.py              # Scenario integration tests (Track A)
 │   ├── track_b_worker.py              # Subprocess-isolated tool smoke worker (Track B)
 │   ├── track_c_scorer.py              # Trajectory quality scorer (Track C)
 │   ├── track_dlt.py                   # DLT framework invariant tests (Track DLT)
 │   ├── track_e_cli.py                 # CLI interactive & edge case test suite (Track E)
-│   └── track_r_redteam.py             # 76-check adversarial red team suite (Track R)
+│   └── track_r_redteam.py             # 80-check adversarial red team suite (Track R)
 ├── setup/                             # Native system tool installer scripts
 │   └── install-system-tools.sh        # Arch/Omarchy/Kali native package & wordlist installer
 ├── docs/                              # Technical specifications & design documents

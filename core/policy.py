@@ -10,7 +10,7 @@ from __future__ import annotations
 import ipaddress
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass

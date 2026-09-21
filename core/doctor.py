@@ -87,9 +87,9 @@ def check_ollama_service() -> list[DiagnosticResult]:
             if has_active:
                 results.append(DiagnosticResult("Ollama", f"{active_model} (Generalist)", "OK", "Model ready in local cache"))
             else:
-                has_any_gen = any("phi4" in m or "gemma3" in m for m in models)
+                has_any_gen = any("phi4" in m for m in models)
                 if has_any_gen:
-                    matching = [m for m in models if "phi4" in m or "gemma3" in m][0]
+                    matching = [m for m in models if "phi4" in m][0]
                     results.append(DiagnosticResult("Ollama", f"{matching} (Generalist)", "OK", "Model ready in local cache"))
                 else:
                     results.append(DiagnosticResult("Ollama", f"{active_model} (Generalist)", "WARN", f"Missing ('ollama pull {active_model}')"))

@@ -75,3 +75,12 @@ class SessionContext:
     @property
     def scope_port(self) -> ScopePort:
         return ContextScopePort(self)
+
+    def flush(self) -> None:
+        """Persist findings and evidence snapshots to disk."""
+        if self.evidence_graph and hasattr(self.evidence_graph, "save"):
+            try:
+                self.evidence_graph.save()
+            except Exception:
+                pass
+
