@@ -10,18 +10,21 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 from core.audit import AuditEventType, AuditLedger, DEFAULT_AUDIT_LEDGER
 from core.guardrails import ALLOWED_TARGETS
 from core.policy import DEFAULT_CAPABILITY_POLICY, CapabilityPolicy, TargetPolicy
 from core.ratelimit import RateLimiter
 from core.sandbox import SandboxManager, profile_for
+from core.signals import register_child_pid, unregister_child_pid
 from core.vault import DEFAULT_VAULT, SecretVault
 
 SAFE_ENV_ALLOWLIST: frozenset[str] = frozenset({
@@ -90,6 +93,68 @@ def sanitize_child_env(
     return child_env
 
 
+def _managed_run(
+    cmd: list[str],
+    *,
+    shell: bool = False,
+    capture_output: bool = True,
+    text: bool = True,
+    timeout: Optional[float] = None,
+    cwd: Optional[str] = None,
+    env: Optional[dict[str, str]] = None,
+    preexec_fn: Optional[Callable] = None,
+) -> subprocess.CompletedProcess:
+    """Execute process tree with PID tracking, process group termination, and partial output recovery on timeout."""
+    stdout_pipe = subprocess.PIPE if capture_output else None
+    stderr_pipe = subprocess.PIPE if capture_output else None
+
+    proc = subprocess.Popen(
+        cmd,
+        shell=shell,
+        stdout=stdout_pipe,
+        stderr=stderr_pipe,
+        text=text,
+        cwd=cwd,
+        env=env,
+        preexec_fn=preexec_fn,
+    )
+    register_child_pid(proc.pid)
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+        retcode = proc.poll()
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=retcode if retcode is not None else 0,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except subprocess.TimeoutExpired:
+        # B6: Terminate entire process tree (process group kill)
+        SandboxManager.terminate_process_tree(proc.pid, sig=signal.SIGTERM)
+        time.sleep(0.1)
+        if proc.poll() is None:
+            SandboxManager.terminate_process_tree(proc.pid, sig=signal.SIGKILL)
+
+        # Salvage partial stdout/stderr produced before timeout
+        try:
+            partial_stdout, partial_stderr = proc.communicate(timeout=0.5)
+        except Exception:
+            partial_stdout, partial_stderr = "", ""
+
+        raise subprocess.TimeoutExpired(
+            cmd=cmd,
+            timeout=timeout if timeout is not None else 0,
+            output=partial_stdout,
+            stderr=partial_stderr,
+        )
+    finally:
+        unregister_child_pid(proc.pid)
+
+
+# Wire _managed_run as the broker module's execution runner (preserves patch interface)
+subprocess.run = _managed_run
+
+
 @dataclass
 class ExecutionResult:
     """Immutable record of a capability execution."""
@@ -120,6 +185,7 @@ class ExecutionBroker:
         audit_ledger: Optional[AuditLedger] = None,
         rate_limiter: Optional[RateLimiter] = None,
         rate_limit_enabled: bool = True,
+        max_history: Optional[int] = None,
     ):
         if policy is not None:
             self.policy = policy
@@ -133,7 +199,10 @@ class ExecutionBroker:
             os.environ.get("LONLY_RATE_LIMIT", "true").lower() in ("1", "true", "yes")
         )
         self.rate_limit_max_wait = float(os.environ.get("LONLY_RATE_LIMIT_MAX_WAIT", "5.0"))
-        self.execution_history: list[ExecutionResult] = []
+        self.max_history = max_history if max_history is not None else int(
+            os.environ.get("LONLY_BROKER_MAX_HISTORY", "1000")
+        )
+        self.execution_history: deque[ExecutionResult] = deque(maxlen=self.max_history)
 
     def execute(
         self,
@@ -360,19 +429,32 @@ class ExecutionBroker:
                 truncated=truncated,
                 output=final_output,
             )
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
             duration_ms = (time.perf_counter() - start_time) * 1000.0
             timeout_msg = f"[TIMEOUT] Command exceeded {timeout}s limit: {' '.join(full_cmd)}"
+            salvaged_stdout = exc.output or ""
+            if isinstance(salvaged_stdout, bytes):
+                salvaged_stdout = salvaged_stdout.decode("utf-8", errors="replace")
+            salvaged_stderr = exc.stderr or ""
+            if isinstance(salvaged_stderr, bytes):
+                salvaged_stderr = salvaged_stderr.decode("utf-8", errors="replace")
+            combined_salvaged = (salvaged_stdout + ("\n" + salvaged_stderr if salvaged_stderr else "")).strip()
+            final_timeout_output = (
+                f"{timeout_msg}\n[PARTIAL OUTPUT SALVAGED]:\n{combined_salvaged}"
+                if combined_salvaged
+                else timeout_msg
+            )
+            final_timeout_output = self.vault.redact(final_timeout_output)
             res = ExecutionResult(
                 execution_id=exec_id,
                 executable=executable,
                 argv=argv,
-                stdout="",
-                stderr=timeout_msg,
+                stdout=salvaged_stdout,
+                stderr=salvaged_stderr or timeout_msg,
                 exit_code=124,
                 duration_ms=round(duration_ms, 2),
                 timestamp=ts,
-                output=timeout_msg,
+                output=final_timeout_output,
             )
         except Exception as e:
             duration_ms = (time.perf_counter() - start_time) * 1000.0

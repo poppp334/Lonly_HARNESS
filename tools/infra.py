@@ -17,7 +17,11 @@ import requests
 import os
 import shlex
 import shutil
+from pathlib import Path
 from tools.base import run_argv, clean_target, find_wordlist
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_CHROMA_DIR = ROOT_DIR / "chroma_db"
 
 try:
     from langchain_chroma import Chroma
@@ -70,11 +74,12 @@ def rag_query(query: str) -> str:
     if rag_vectorstore is None:
         if get_embedding_model is None or Chroma is None:
             return "RAG dependencies not installed."
-        if not os.path.exists("chroma_db"):
+        chroma_path = str(DEFAULT_CHROMA_DIR)
+        if not os.path.exists(chroma_path):
             return "Knowledge base not initialized. Run python ingest_knowledge.py to build index."
         try:
             embeddings = get_embedding_model()
-            rag_vectorstore = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
+            rag_vectorstore = Chroma(persist_directory=chroma_path, embedding_function=embeddings)
         except Exception as e:
             return f"RAG initialization failed: {e}"
     try:

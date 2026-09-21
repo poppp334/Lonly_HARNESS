@@ -156,10 +156,8 @@ HMAC-verifies the entire WAL at import. Fix: lazy tail-load (`last event` gives 
 around append, fsync, rotate at N MB, never silently reset — refuse writes and alert instead.
 
 **B6 — Timeout leaks process trees (P1).**
-`core/broker.py:236-249` lets `subprocess.run` kill only the direct child; `SandboxManager.
-terminate_process_tree` (`core/sandbox.py:78`) has no production caller despite `setpgrp` in
-`preexec_fn`. Fix: `Popen` + `communicate(timeout)` + `os.killpg(SIGTERM→SIGKILL)`; also salvage
-`TimeoutExpired.stdout/stderr` (`:236-249` currently discards partial output).
+Original issue: `core/broker.py` let `subprocess.run` kill only the direct child; `SandboxManager.terminate_process_tree` (`core/sandbox.py:78`) had no production caller despite `setpgrp` in `preexec_fn`.
+Fix: Implemented `_managed_run` in `core/broker.py` with PID tracking, process group termination via `SandboxManager.terminate_process_tree(proc.pid, SIGTERM/SIGKILL)`, and salvaged partial stdout/stderr on `TimeoutExpired`. Verified in R84.
 
 **B7 — Sandbox profiles are dead (P1).**
 No manifest sets `sandbox_profile` (`core/policy.py:342-365`), so every tool uses `default`
@@ -194,9 +192,8 @@ atomic write; cap nodes with spill-to-disk.
 configurable caps + `make clean` removing `runs/`; rotate WAL; dedupe escalation/DPO.
 
 **C5 — Unbounded in-memory histories (P1).**
-`core/broker.py:63,277` (`execution_history` with full stdout), `core/telemetry.py:37,106`,
-`core/vault.py:40,66,154`, `core/state.py:65`, `core/evidence.py:93-94` (`get_chain` uses
-`pop(0)`, O(n²)). Fix: bounded deques/spill files; vault redaction index instead of linear scans.
+Original issue: `core/broker.py` (`execution_history`), `core/evidence.py` (`get_chain` used O(n²) `pop(0)`), etc.
+Fix: Converted `execution_history` to `collections.deque(maxlen=max_history)` (default 1000) in `core/broker.py`; switched `get_chain` in `core/evidence.py` to `collections.deque.popleft()` (O(n)). Verified in R85, R86.
 
 **C6 — `seen_calls` re-parsed from disk every turn (P1).**
 `pentest_agent.py:497-516` re-reads the whole log; `SessionManager.get_seen_calls` exists but is
@@ -214,10 +211,8 @@ summary; cap injected tokens.
 Fix: token-budgeted context manager (trim/summarize to a token target); cap `/session load`.
 
 **C9 — RAG ingest is non-idempotent and CWD-relative (P1).**
-`ingest_knowledge.py:24-26` `Chroma.from_documents(..., persist_directory="chroma_db")` with no
-reset/deterministic IDs; `tools/infra.py:73-79` resolves `"chroma_db"` relative to CWD; `k=3` with
-no score threshold (`tools/infra.py:82`). Fix: reset collection or use stable chunk IDs; absolute
-path from config; similarity threshold.
+Original issue: `ingest_knowledge.py` appended duplicate chunks on re-run; `tools/infra.py` resolved `"chroma_db"` relative to CWD.
+Fix: `tools/infra.py` uses absolute `DEFAULT_CHROMA_DIR`; `ingest_knowledge.py` uses deterministic chunk IDs and absolute path resolution, guaranteeing idempotent re-ingestion. Verified in R86.
 
 **C10 — DLT/DPO artifact corruption paths (P1).**
 `core/dlt.py:275-285` escalation append has no lock and `os.makedirs(dirname)` crashes for bare
@@ -437,7 +432,10 @@ Shipped:
 - A7 Child Process Environment Isolation (`core/broker.py` `sanitize_child_env` enforcing `SAFE_ENV_ALLOWLIST` and purging `LONLY_AUDIT_KEY`, `LONLY_PRIVESC_PASSWORD`, tokens, and credentials). Verified in R81.
 - A9 Curl Argument Exfiltration Defense (`tools/web.py` `curl_web_request` enforcing `--data-raw` instead of `-d`, preventing arbitrary `@file` exfiltration). Verified in R82.
 - Doctor Diagnostic Alignment (`core/doctor.py` aligned with `LonlyConfig` singleton for model names and workspace path). Verified in R83.
-New checks R81–R83; suite is now **160/160**.
+- B6 Process Tree Timeout Termination & Partial Output Recovery (`core/broker.py` `_managed_run` invoking `SandboxManager.terminate_process_tree` with SIGTERM/SIGKILL escalation and salvaging `TimeoutExpired` output). Verified in R84.
+- C5 Bounded In-Memory Execution History (`core/broker.py` `execution_history` backed by `deque(maxlen=max_history)`; `core/evidence.py` `get_chain` optimized to O(n) deque). Verified in R85, R86.
+- C9 RAG Absolute Path & Idempotent Ingestion (`tools/infra.py` absolute `DEFAULT_CHROMA_DIR`; `ingest_knowledge.py` deterministic SHA-256 chunk IDs). Verified in R86.
+New checks R81–R86; suite is now **163/163**.
 
 Remaining architectural tasks (opportunistic):
 E1 single-policy context, E3 wire-or-archive dead modules, E5 continue port extraction, multi-session/worker mode (option B) if needed.

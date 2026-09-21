@@ -1,14 +1,20 @@
+import hashlib
 import os
+from pathlib import Path
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from core.embeddings import get_embedding_model, format_document_text, DEFAULT_EMBEDDING_MODEL
 
-loader = DirectoryLoader("knowledge/", glob="**/*.md", loader_cls=TextLoader)
+ROOT_DIR = Path(__file__).resolve().parent
+KNOWLEDGE_DIR = ROOT_DIR / "knowledge"
+CHROMA_DIR = ROOT_DIR / "chroma_db"
+
+loader = DirectoryLoader(str(KNOWLEDGE_DIR), glob="**/*.md", loader_cls=TextLoader)
 documents = loader.load()
 
 if not documents:
-    print("No documents found in knowledge/. Please add .md files.")
+    print(f"No documents found in {KNOWLEDGE_DIR}. Please add .md files.")
     exit(1)
 
 # Utilize 8192 token context window with richer 1200-char chunks
@@ -21,9 +27,16 @@ for chunk in chunks:
 
 embeddings = get_embedding_model()
 
-vectorstore = Chroma.from_documents(
-    chunks, embeddings, persist_directory="chroma_db"
-)
+# Deterministic IDs ensure idempotent ingestion across repeated runs (C9)
+doc_ids = [
+    hashlib.sha256(
+        f"{chunk.metadata.get('source', '')}:{idx}:{chunk.page_content[:64]}".encode()
+    ).hexdigest()
+    for idx, chunk in enumerate(chunks)
+]
 
-print(f"Successfully ingested {len(chunks)} chunks from {len(documents)} documents using {DEFAULT_EMBEDDING_MODEL}.")
+vectorstore = Chroma(persist_directory=str(CHROMA_DIR), embedding_function=embeddings)
+vectorstore.add_documents(chunks, ids=doc_ids)
+
+print(f"Successfully ingested {len(chunks)} chunks from {len(documents)} documents into {CHROMA_DIR} using {DEFAULT_EMBEDDING_MODEL}.")
 

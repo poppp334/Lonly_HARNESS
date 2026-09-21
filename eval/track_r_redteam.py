@@ -1880,6 +1880,66 @@ class TestRedTeamHarness(unittest.TestCase):
                 self.assertEqual(gen_item.status, "OK")
                 self.assertEqual(spec_item.status, "OK")
 
+    def test_r84_process_tree_termination_and_partial_output_recovery_on_timeout(self):
+        """R84: Broker terminates process tree and salvages partial output upon timeout."""
+        from core.broker import ExecutionBroker
+
+        broker = ExecutionBroker()
+        # Execution of a command that prints partial output and sleeps past timeout
+        py_code = "import sys, time; sys.stdout.write('PARTIAL_DATA\\n'); sys.stdout.flush(); time.sleep(5)"
+        res = broker.execute(
+            "sh",
+            ["-c", f"python3 -c \"{py_code}\""],
+            target="127.0.0.1",
+            capability="shell_exec",
+            approved=True,
+            timeout=1,
+        )
+
+        self.assertEqual(res.exit_code, 124)
+        self.assertIn("[TIMEOUT]", res.output)
+        self.assertIn("PARTIAL_DATA", res.stdout)
+        self.assertIn("[PARTIAL OUTPUT SALVAGED]:", res.output)
+        self.assertIn("PARTIAL_DATA", res.output)
+
+    def test_r85_broker_bounded_execution_history(self):
+        """R85: ExecutionBroker caps in-memory execution_history to max_history (C5)."""
+        from core.broker import ExecutionBroker
+        from unittest.mock import patch
+        import subprocess as sp
+
+        fake = sp.CompletedProcess(args=["curl"], returncode=0, stdout="ok", stderr="")
+        broker = ExecutionBroker(max_history=5)
+
+        with patch("core.broker.subprocess.run", return_value=fake):
+            for i in range(12):
+                broker.execute("curl", ["http://127.0.0.1", str(i)], target="127.0.0.1", capability="curl")
+
+        self.assertEqual(len(broker.execution_history), 5)
+        last_argvs = [res.argv[1] for res in broker.execution_history]
+        self.assertEqual(last_argvs, ["7", "8", "9", "10", "11"])
+
+    def test_r86_evidence_graph_queue_and_chroma_root_path(self):
+        """R86: Evidence graph traversal is O(n) and RAG ChromaDB resolves to absolute repository path."""
+        from core.evidence import EvidenceGraph, Provenance
+        from tools.infra import DEFAULT_CHROMA_DIR
+        import tempfile
+
+        # 1. EvidenceGraph.get_chain operates correctly on node chains
+        with tempfile.TemporaryDirectory() as tmpdir:
+            eg = EvidenceGraph(run_dir=tmpdir)
+            n1 = eg.add_artifact("content 1", Provenance.TOOL_OUTPUT, "nmap", target="127.0.0.1")
+            n2 = eg.add_artifact("content 2", Provenance.LLM_GENERATED, "agent", parent_hashes=[n1.sha256])
+            n3 = eg.add_artifact("content 3", Provenance.SYSTEM, "guardrail", parent_hashes=[n2.sha256])
+
+            chain = eg.get_chain(n3.sha256)
+            self.assertEqual(len(chain), 3)
+            self.assertEqual([n.sha256 for n in chain], [n3.sha256, n2.sha256, n1.sha256])
+
+        # 2. ChromaDB path is absolute
+        self.assertTrue(DEFAULT_CHROMA_DIR.is_absolute())
+        self.assertTrue(str(DEFAULT_CHROMA_DIR).endswith("chroma_db"))
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -1972,6 +2032,9 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R81 Child process environment isolation and secret scrubbing", True, ""),
         ("R82 Curl data-raw defense against file exfiltration", True, ""),
         ("R83 Doctor system diagnostics configuration alignment", True, ""),
+        ("R84 Process tree termination and partial output recovery on timeout", True, ""),
+        ("R85 Broker bounded execution history", True, ""),
+        ("R86 Evidence graph traversal queue and Chroma root path", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

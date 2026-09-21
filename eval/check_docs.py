@@ -3,7 +3,7 @@
 
 Ensures:
 1. No stale model references (e.g. 'gemma3:4b') in active code, tools, or primary docs.
-2. Verified acceptance test suite counts match the true number of checks (160).
+2. Verified acceptance test suite counts match the true number of checks (163).
 3. Primary architectural claims match actual codebase invariants.
 """
 
@@ -28,7 +28,7 @@ FORBIDDEN_PATTERNS = [
     (re.compile(r"gemma3:4b", re.IGNORECASE), "Deprecated model reference 'gemma3:4b' (use 'phi4-mini' or 'privesc-llm-rl:4b')"),
 ]
 
-REQUIRED_COUNT = 160
+REQUIRED_COUNT = 163
 
 
 def check_docs() -> bool:

@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import time
+from collections import deque
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from typing import Optional
@@ -267,9 +268,9 @@ class EvidenceGraph:
         """Walk the parent chain from a node back to its roots."""
         chain = []
         visited = set()
-        queue = [sha256]
+        queue = deque([sha256])
         while queue:
-            current = queue.pop(0)
+            current = queue.popleft()
             if current in visited or current not in self._nodes:
                 continue
             visited.add(current)
