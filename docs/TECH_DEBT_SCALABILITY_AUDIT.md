@@ -255,11 +255,9 @@ path, manifest + resume; not needed until corpus grows.
 Original issue: Agent gate and broker gate implemented different rules over different identifiers; agent previously hardcoded approval to tool name membership instead of operator decision.
 Fix: Agent confirmation gate tracks the real operator decision (`operator_approved`) and passes it directly into `ToolCallExecutor.execute(approved=operator_approved)`, propagating through `core/tool_context.py` to `ExecutionBroker.execute()`. Verified in R90.
 
-**E2 — Duplicated policy constants (P1).**
-Failure patterns (`core/parser.py:17-25` vs `tools/base.py:36-45`), positive-finding rules
-(`core/parser.py:208-230` vs `:241-251`), carryover decay (`pentest_agent.py:318-338` vs
-`:341-356`), target cleaning (`pentest_agent.py:636,1086`, `core/parser.py:321,327`,
-`core/policy.py:23-67`), model names (6+ sites). Fix: single source per decision; delete copies.
+**E2 — Duplicated policy constants (P1) — COMPLETED 2026-09-21.**
+Original issue: Model names were declared separately across `pentest_agent.py`, `core/state.py`, and `core/config.py`; carryover decay logic was duplicated between `get_carryover_risk` and `build_checkpoint_header`; target cleaning had redundant regex/splits that broke CIDR notation in `/scope` and scope prompts.
+Fix: Model names unified to single source via `core.config.get_config()`; carryover decay consolidated into `compute_carryover_decay()`; scope and target cleaning standardized on `tools.base.clean_target()` preserving CIDR masks.
 
 **E3 — Dead "enterprise" modules (P1).**
 `core/orchestrator.py`, `core/job_queue.py`, `core/telemetry.py`, `core/metrics.py`,
@@ -430,6 +428,7 @@ Shipped:
 - B8 Fail-Silent Error Paths & Observability (warning logs on privesc specialist import failure, main loop `logger.exception` with full traceback, session metadata warning logs).
 - E1 Single-Policy Gate & Approval Decision Propagation (`pentest_agent.py` threads real operator confirmation answer to `ctx.tool_executor.execute()`, ensuring broker receives true operator decision). Verified in R90.
 - C11 DPO Event Schema Reconciliation & Preference Mining (`pentest_agent.py` emits `turn_input`, `safety_passed`, `overclaim_detected`; `DPOExporter` mines verified $(x, y_w, y_l)$ preference pairs from forensic session logs). Verified in R91.
+- E2 Duplicated Policy Constants & Single-Sourcing (Model names unified via `core/config.py`, carryover decay unified in `compute_carryover_decay()`, target cleaning standardized on `clean_target()`).
 New checks R81–R91; suite is now **168/168**.
 
 ### Remaining Opportunistic Backlog (Future Enhancements)
