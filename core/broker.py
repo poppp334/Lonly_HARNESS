@@ -20,6 +20,7 @@ from typing import Optional
 from core.audit import AuditEventType, AuditLedger, DEFAULT_AUDIT_LEDGER
 from core.guardrails import ALLOWED_TARGETS
 from core.policy import DEFAULT_CAPABILITY_POLICY, CapabilityPolicy, TargetPolicy
+from core.ratelimit import RateLimiter
 from core.sandbox import SandboxManager, profile_for
 from core.vault import DEFAULT_VAULT, SecretVault
 
@@ -52,6 +53,8 @@ class ExecutionBroker:
         vault: Optional[SecretVault] = None,
         capability_policy: Optional[CapabilityPolicy] = None,
         audit_ledger: Optional[AuditLedger] = None,
+        rate_limiter: Optional[RateLimiter] = None,
+        rate_limit_enabled: bool = True,
     ):
         if policy is not None:
             self.policy = policy
@@ -60,6 +63,11 @@ class ExecutionBroker:
         self.vault = vault or DEFAULT_VAULT
         self.capability_policy = capability_policy or DEFAULT_CAPABILITY_POLICY
         self.audit_ledger = audit_ledger or DEFAULT_AUDIT_LEDGER
+        self.rate_limiter = rate_limiter if rate_limiter is not None else RateLimiter()
+        self.rate_limit_enabled = rate_limit_enabled and (
+            os.environ.get("LONLY_RATE_LIMIT", "true").lower() in ("1", "true", "yes")
+        )
+        self.rate_limit_max_wait = float(os.environ.get("LONLY_RATE_LIMIT_MAX_WAIT", "5.0"))
         self.execution_history: list[ExecutionResult] = []
 
     def execute(
@@ -142,8 +150,43 @@ class ExecutionBroker:
                     output=blocked_msg,
                 )
 
-        # 3. Binary Path Resolution (resolve capability executable if manifested)
+        # 3. Rate Limiting Check
         manifest = self.capability_policy.get(auth_name)
+        if self.rate_limit_enabled:
+            rate = manifest.rate_limit_per_min if manifest else 60
+            target_str = target if isinstance(target, str) else (target.canonical_host if target else "")
+            acquired = self.rate_limiter.acquire(
+                capability=auth_name,
+                target=target_str,
+                rate_per_min=rate,
+                max_wait=self.rate_limit_max_wait,
+            )
+            if not acquired:
+                rate_msg = f"[RATE LIMITED] Capability '{auth_name}' exceeded rate limit of {rate}/min for target '{target_str}'."
+                self.audit_ledger.record_event(
+                    AuditEventType.DECISION,
+                    {
+                        "execution_id": exec_id,
+                        "capability": auth_name,
+                        "executable": executable,
+                        "target": target_str,
+                        "allowed": False,
+                        "reason": rate_msg,
+                    },
+                )
+                return ExecutionResult(
+                    execution_id=exec_id,
+                    executable=executable,
+                    argv=argv,
+                    stdout="",
+                    stderr=rate_msg,
+                    exit_code=126,
+                    duration_ms=0.0,
+                    timestamp=ts,
+                    output=rate_msg,
+                )
+
+        # 4. Binary Path Resolution (resolve capability executable if manifested)
         if capability:
             # Explicit capability: execute the requested binary as given.
             bin_name = executable

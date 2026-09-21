@@ -410,7 +410,17 @@ lock, fsync, rotation; evidence persisted; retention caps.
 Acceptance: two concurrent `SessionContext`s don't share scope/history; 10k-message session writes
 one line per message; WAL verifies across two processes; `runs/` capped.
 
-### Phase 2 — Throughput and scale (est. 1–2 weeks)
+### Phase 2 — Throughput and scale (est. 1–2 weeks) — COMPLETED 2026-09-21
+Shipped: `core/model_client.py` (`ResilientLLM` wrapping `LLMPort` with per-call timeout,
+exponential backoff retries, and `CircuitOpenError` circuit breaker); `core/ratelimit.py`
+(`TokenBucket` and `RateLimiter` enforcing manifest rate limits inside `ExecutionBroker.execute()`,
+with `[RATE LIMITED]` classified as tool failure); `core/tool_pool.py` (`parallel_map` bounded
+thread-pool concurrency preserving index order); `core/dlt.py` (`DLTEngine.run_benchmark` parallel
+evaluation with bounded workers, and honest fluency scoring assigning 0.0 to empty outputs);
+`models/privesc_protocol.py` (`PrivescSpecialist` cooperative non-blocking cancellation via `cancel_event`).
+New checks R68–R76; suite is now **153/153**.
+
+Original plan:
 D1–D5; bounded tool pool; model timeout/retry/circuit breaker; privesc as cancellable job; token
 budget; DLT parallelism + honest fluency; broker rate limiting.
 Acceptance: two targets scan concurrently; prompt never exceeds budget; benchmark wall time scales

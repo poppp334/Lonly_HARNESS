@@ -1440,6 +1440,254 @@ class TestRedTeamHarness(unittest.TestCase):
             self.assertEqual(len(sm.list_sessions()), 2)
             self.assertIsNotNone(sm.active_session)
 
+    def test_r68_model_client_timeout_aborts_in_bounded_time(self):
+        """R68: ResilientLLM aborts hanging model calls within the configured timeout."""
+        import time
+        from core.model_client import ResilientLLM
+
+        class SlowLLM:
+            def invoke(self, messages):
+                time.sleep(0.4)
+                return "late"
+
+        client = ResilientLLM(SlowLLM(), timeout=0.05, retries=0)
+        t0 = time.perf_counter()
+        with self.assertRaises(TimeoutError):
+            client.invoke(["hello"])
+        elapsed = time.perf_counter() - t0
+        self.assertLess(elapsed, 0.25)
+
+    def test_r69_model_client_retries_transient_failures(self):
+        """R69: ResilientLLM retries transient failures with exponential backoff delays."""
+        from core.model_client import ResilientLLM
+
+        attempts = 0
+        delays = []
+
+        class FlakyLLM:
+            def invoke(self, messages):
+                nonlocal attempts
+                attempts += 1
+                if attempts < 3:
+                    raise RuntimeError(f"fail {attempts}")
+                class Resp:
+                    content = "recovered"
+                return Resp()
+
+        client = ResilientLLM(
+            FlakyLLM(),
+            timeout=2.0,
+            retries=2,
+            backoff=0.01,
+            sleep=lambda d: delays.append(d),
+        )
+        resp = client.invoke(["hi"])
+        self.assertEqual(resp.content, "recovered")
+        self.assertEqual(attempts, 3)
+        self.assertEqual(len(delays), 2)
+        self.assertAlmostEqual(delays[0], 0.01)
+        self.assertAlmostEqual(delays[1], 0.02)
+
+    def test_r70_circuit_breaker_fails_fast_and_resets(self):
+        """R70: circuit breaker opens after failure threshold, fails fast, and resets on probe."""
+        from core.model_client import ResilientLLM, CircuitOpenError
+
+        now = 1000.0
+        def fake_clock():
+            return now
+
+        class FailingLLM:
+            def __init__(self):
+                self.calls = 0
+            def invoke(self, messages):
+                self.calls += 1
+                if self.calls <= 3:
+                    raise RuntimeError("service unavailable")
+                class Resp:
+                    content = "ok"
+                return Resp()
+
+        inner = FailingLLM()
+        client = ResilientLLM(
+            inner,
+            timeout=1.0,
+            retries=0,
+            circuit_threshold=3,
+            circuit_cooldown=30.0,
+            clock=fake_clock,
+            sleep=lambda s: None,
+        )
+
+        for _ in range(3):
+            with self.assertRaises(RuntimeError):
+                client.invoke(["ping"])
+
+        # 4th call: circuit is OPEN, should fail fast without invoking inner
+        with self.assertRaises(CircuitOpenError):
+            client.invoke(["ping"])
+        self.assertEqual(inner.calls, 3)
+
+        # Advance clock past cooldown -> HALF_OPEN probe call
+        now += 35.0
+        resp = client.invoke(["ping"])
+        self.assertEqual(resp.content, "ok")
+        self.assertEqual(inner.calls, 4)
+
+        # Circuit is now CLOSED again
+        resp2 = client.invoke(["ping"])
+        self.assertEqual(resp2.content, "ok")
+        self.assertEqual(inner.calls, 5)
+
+    def test_r71_broker_rate_limiter_throttles_bursts(self):
+        """R71: ExecutionBroker throttles burst calls exceeding capability rate limit."""
+        from core.broker import ExecutionBroker
+        from core.ratelimit import RateLimiter
+        from core.policy import CapabilityPolicy, CapabilityManifest
+        import subprocess as sp
+
+        now = 100.0
+        def fake_clock():
+            return now
+
+        limiter = RateLimiter(default_rate_per_min=2.0, clock=fake_clock)
+        pol = CapabilityPolicy({
+            "curl": CapabilityManifest(capability_id="curl", executable="curl", rate_limit_per_min=2)
+        })
+        broker = ExecutionBroker(capability_policy=pol, rate_limiter=limiter, rate_limit_enabled=True)
+        broker.rate_limit_max_wait = 0.0
+
+        fake = sp.CompletedProcess(args=["curl"], returncode=0, stdout="ok", stderr="")
+        with patch("core.broker.subprocess.run", return_value=fake):
+            r1 = broker.execute("curl", ["http://127.0.0.1"], target="127.0.0.1", capability="curl")
+            self.assertEqual(r1.exit_code, 0)
+            r2 = broker.execute("curl", ["http://127.0.0.1"], target="127.0.0.1", capability="curl")
+            self.assertEqual(r2.exit_code, 0)
+            # 3rd call in same second should be rate limited
+            r3 = broker.execute("curl", ["http://127.0.0.1"], target="127.0.0.1", capability="curl")
+            self.assertEqual(r3.exit_code, 126)
+            self.assertIn("[RATE LIMITED]", r3.output)
+
+    def test_r72_rate_limiter_isolates_targets_and_capabilities(self):
+        """R72: rate limit buckets are isolated per (capability, target) pair."""
+        from core.ratelimit import RateLimiter
+
+        now = 100.0
+        limiter = RateLimiter(clock=lambda: now)
+        self.assertTrue(limiter.acquire("curl", "10.0.0.1", rate_per_min=1, max_wait=0))
+        self.assertFalse(limiter.acquire("curl", "10.0.0.1", rate_per_min=1, max_wait=0))
+
+        # Different target should have separate bucket
+        self.assertTrue(limiter.acquire("curl", "10.0.0.2", rate_per_min=1, max_wait=0))
+        # Different capability should have separate bucket
+        self.assertTrue(limiter.acquire("nmap", "10.0.0.1", rate_per_min=1, max_wait=0))
+
+    def test_r73_parallel_map_preserves_order_and_bounds_latency(self):
+        """R73: parallel_map executes tasks concurrently while strictly maintaining order."""
+        import time
+        from core.tool_pool import parallel_map
+
+        def work(item):
+            idx, delay, fail = item
+            time.sleep(delay)
+            if fail:
+                raise ValueError(f"err-{idx}")
+            return f"res-{idx}"
+
+        items = [(0, 0.05, False), (1, 0.08, True), (2, 0.02, False), (3, 0.05, False)]
+        t0 = time.perf_counter()
+        results, errors = parallel_map(work, items, max_workers=4)
+        elapsed = time.perf_counter() - t0
+
+        self.assertLess(elapsed, 0.15)
+        self.assertEqual(results[0], "res-0")
+        self.assertIsNone(results[1])
+        self.assertIsInstance(errors[1], ValueError)
+        self.assertEqual(results[2], "res-2")
+        self.assertEqual(results[3], "res-3")
+
+    def test_r74_dlt_benchmark_parallel_execution(self):
+        """R74: DLTEngine.run_benchmark executes with parallel workers and produces valid scores."""
+        from core.dlt import DLTEngine, DLTActualResult
+        import tempfile, json
+
+        class SlowFakeRunner:
+            def run_case(self, case):
+                import time
+                time.sleep(0.02)
+                return DLTActualResult(
+                    actual_mode=case.get("expected_mode", "mode_1"),
+                    actual_tool=None,
+                    tool_args={},
+                    scope_violations=0,
+                    ttft_sec=0.1,
+                    total_turn_sec=0.2,
+                    response_text="ok response",
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bp = os.path.join(tmp, "baseline.jsonl")
+            with open(bp, "w") as f:
+                for i in range(8):
+                    f.write(json.dumps({
+                        "id": f"tc_{i}",
+                        "prompt": f"test {i}",
+                        "expected_mode": "mode_1",
+                        "category": "recon",
+                    }) + "\n")
+            engine = DLTEngine(baseline_path=bp, runner=SlowFakeRunner())
+            res = engine.run_benchmark(max_workers=4)
+            self.assertEqual(res.get("status"), "BENCHMARK_PASSED")
+            self.assertEqual(res.get("total_cases_evaluated"), 8)
+            self.assertGreaterEqual(res.get("composite_score", 0), 90.0)
+
+    def test_r75_dlt_empty_response_zero_fluency(self):
+        """R75: DLTEngine scores empty/None response_text as 0.0 fluency, refusing to score prompt."""
+        from core.dlt import DLTEngine, DLTActualResult
+        import tempfile, json
+
+        class EmptyRunner:
+            def run_case(self, case):
+                return DLTActualResult(
+                    actual_mode="mode_1",
+                    actual_tool=None,
+                    tool_args={},
+                    scope_violations=0,
+                    ttft_sec=0.1,
+                    total_turn_sec=0.2,
+                    response_text="",
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bp = os.path.join(tmp, "baseline.jsonl")
+            with open(bp, "w") as f:
+                f.write(json.dumps({
+                    "id": "tc_0",
+                    "prompt": "Super detailed prompt with lots of content and markdown.",
+                    "expected_mode": "mode_1",
+                    "category": "recon",
+                }) + "\n")
+            engine = DLTEngine(baseline_path=bp, runner=EmptyRunner())
+            res = engine.run_benchmark(max_workers=1)
+            self.assertEqual(res.get("fluency_score"), 0.0)
+
+    def test_r76_privesc_cancellation_event(self):
+        """R76: PrivescSpecialist exits with 'cancelled' when cancel_event is set."""
+        import threading
+        from models.privesc_protocol import PrivescSpecialist
+
+        class DummyBackend:
+            def exec_command(self, cmd):
+                pass
+            def test_credentials(self, u, p):
+                pass
+
+        cancel = threading.Event()
+        cancel.set()
+        spec = PrivescSpecialist(DummyBackend(), cancel_event=cancel, max_turns=5)
+        res = spec.run()
+        self.assertFalse(res["success"])
+        self.assertIn("cancelled", res["reason"])
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -1516,6 +1764,15 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R65 History trim bounds the context window", True, ""),
         ("R66 Audit ledger rotates at the size cap", True, ""),
         ("R67 Session retention cap prunes oldest", True, ""),
+        ("R68 Model client timeout bounds hung calls", True, ""),
+        ("R69 Model client retries with exponential backoff", True, ""),
+        ("R70 Circuit breaker fails fast and recovers", True, ""),
+        ("R71 Broker rate limiter throttles burst calls", True, ""),
+        ("R72 Rate limiter isolates targets and capabilities", True, ""),
+        ("R73 Parallel map preserves order and bounds latency", True, ""),
+        ("R74 DLT benchmark evaluates cases concurrently", True, ""),
+        ("R75 DLT scores empty response as zero fluency", True, ""),
+        ("R76 Privesc specialist cancellable execution", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

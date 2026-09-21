@@ -30,6 +30,9 @@ Lonly_HARNESS/
 │   ├── session_context.py    # Per-engagement state + per-session broker/scope
 │   ├── storage.py            # Atomic writes, locked JSONL appends, 0700 dirs
 │   ├── ports.py              # LLM / tool / evidence / approval / scope ports
+│   ├── model_client.py       # Resilient LLM wrapper (timeouts, retries, circuit breaker)
+│   ├── ratelimit.py          # Thread-safe token-bucket rate limiter
+│   ├── tool_pool.py          # Bounded concurrent worker execution pool
 │   ├── tool_dispatch.py      # Tool-call gate and evidence-recording executor
 │   └── tool_context.py       # Per-call approval + broker context (contextvars)
 ├── tools/                    # 24 modular pentesting tools
@@ -47,7 +50,7 @@ Lonly_HARNESS/
 │   ├── analyze_benchmark.py  # Trajectory and benchmark log analyzer
 │   └── sft/                  # Local SFT training flywheel (Unsloth QLoRA, GGUF merge)
 ├── eval/                     # Offline test and evaluation harness
-│   ├── eval_lonly.py         # Consolidated 144-check test runner
+│   ├── eval_lonly.py         # Consolidated 153-check test runner
 │   ├── track_a_runner.py     # Scenario integration suite (S1, S2, S4)
 │   ├── track_b_worker.py     # Subprocess-isolated tool smoke tests (24/24)
 │   ├── track_c_scorer.py     # Trajectory and loop quality scorer
@@ -81,7 +84,7 @@ Lonly_HARNESS/
 
 ## 4. Engineering & Contribution Rules
 
-1. **Zero Unverified Commits**: Run `eval/eval_lonly.py` before committing. All 144 checks must pass with exit code 0.
+1. **Zero Unverified Commits**: Run `eval/eval_lonly.py` before committing. All 153 checks must pass with exit code 0.
 2. **Modular Tool Contracts**: Tools must be defined under `tools/` with strict Pydantic `args_schema` and registered in `tools/__init__.py`. Never place raw tool execution code directly in `pentest_agent.py`.
 3. **Target Sanitization**: All host and URL parameters must pass through `clean_target()` or `ensure_url()` in `tools/base.py` to prevent formatting failures.
 4. **Safety Gating**:

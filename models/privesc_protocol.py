@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import urllib.request
 from typing import Any, Callable
 
@@ -141,10 +142,12 @@ class PrivescSpecialist:
         num_ctx: int = 8192,
         num_predict: int = 2048,
         trajectory_path: str | None = None,
+        cancel_event: threading.Event | None = None,
     ):
         self.backend = backend
         self.model = model
         self.base_url = base_url.rstrip("/")
+        self.cancel_event = cancel_event
         self.opts = {
             "user": user,
             "password": password,
@@ -252,6 +255,9 @@ class PrivescSpecialist:
         turns = 0
         stall = 0
         for turns in range(1, self.opts["max_turns"] + 1):
+            if self.cancel_event and self.cancel_event.is_set():
+                self._save_trajectory(False)
+                return self._finish(False, turns, messages, "cancelled by operator")
             try:
                 assistant = self._chat(messages)
             except Exception as e:

@@ -22,6 +22,7 @@ TOOL_FAILURE_PATTERNS = [
     "[SCOPE BLOCKED]",
     "[APPROVAL REQUIRED]",
     "[POLICY BLOCKED]",
+    "[RATE LIMITED]",
     "not found",
     "command not found",
     "No such file or directory",

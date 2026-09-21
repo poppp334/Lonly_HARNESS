@@ -484,7 +484,59 @@ class DLTEngine:
                     cases.append(json.loads(line))
         return cases
 
-    def run_benchmark(self, max_cases: Optional[int] = None) -> Dict[str, Any]:
+    def _evaluate_case(self, tc: Dict[str, Any]) -> Tuple[Optional[ScoreBreakdown], Optional[str]]:
+        """Evaluate an individual test case against the runner and return (ScoreBreakdown, error_str)."""
+        exp_mode = tc["expected_mode"]
+        exp_tool = tc.get("expected_tool")
+
+        try:
+            actual = self.runner.run_case(tc)
+        except Exception as exc:  # noqa: BLE001 — runner failures are data, not crashes
+            return None, f"{tc.get('id', '?')}: {type(exc).__name__}: {exc}"
+
+        if actual.error:
+            return None, f"{tc.get('id', '?')}: {actual.error}"
+
+        if actual.actual_tool:
+            sem_valid, _ = self.scorer.validate_runtime_arguments(
+                actual.actual_tool, actual.tool_args
+            )
+            schema_valid = bool(actual.tool_args)
+        else:
+            sem_valid, schema_valid = True, True
+
+        s_safety = self.scorer.evaluate_safety(
+            scope_violations=actual.scope_violations,
+            fabricated_tools=actual.fabricated_tools,
+            overclaims=actual.overclaims,
+            verification_passed=actual.verification_passed,
+        )
+        s_routing = self.scorer.evaluate_routing(
+            exp_mode,
+            actual.actual_mode,
+            exp_tool,
+            actual.actual_tool,
+            schema_valid=schema_valid,
+            semantic_valid=sem_valid,
+        )
+        s_perf = self.scorer.evaluate_performance(
+            ttft_sec=actual.ttft_sec,
+            total_turn_sec=actual.total_turn_sec,
+            runaway_prevented=actual.runaway_prevented,
+        )
+        if actual.response_text:
+            s_fluency = self.scorer.evaluate_fluency(actual.response_text)
+        else:
+            s_fluency = 0.0
+
+        score_obj = self.scorer.compute_composite_score(
+            s_safety, s_routing, s_perf, s_fluency, details={"case_id": tc["id"]}
+        )
+        return score_obj, None
+
+    def run_benchmark(
+        self, max_cases: Optional[int] = None, max_workers: Optional[int] = None
+    ) -> Dict[str, Any]:
         """Runs the DLT Gold Standard benchmark against the injected runner.
 
         Returns status NO_RUNNER if no runner was injected: the engine never
@@ -512,53 +564,30 @@ class DLTEngine:
         errors: List[str] = []
         start_all = time.time()
 
-        for tc in cases:
-            exp_mode = tc["expected_mode"]
-            exp_tool = tc.get("expected_tool")
-
-            try:
-                actual = self.runner.run_case(tc)
-            except Exception as exc:  # noqa: BLE001 — runner failures are data, not crashes
-                errors.append(f"{tc.get('id', '?')}: {type(exc).__name__}: {exc}")
-                continue
-
-            if actual.error:
-                errors.append(f"{tc.get('id', '?')}: {actual.error}")
-                continue
-
-            if actual.actual_tool:
-                sem_valid, _ = self.scorer.validate_runtime_arguments(
-                    actual.actual_tool, actual.tool_args
-                )
-                schema_valid = bool(actual.tool_args)
-            else:
-                sem_valid, schema_valid = True, True
-
-            s_safety = self.scorer.evaluate_safety(
-                scope_violations=actual.scope_violations,
-                fabricated_tools=actual.fabricated_tools,
-                overclaims=actual.overclaims,
-                verification_passed=actual.verification_passed,
-            )
-            s_routing = self.scorer.evaluate_routing(
-                exp_mode,
-                actual.actual_mode,
-                exp_tool,
-                actual.actual_tool,
-                schema_valid=schema_valid,
-                semantic_valid=sem_valid,
-            )
-            s_perf = self.scorer.evaluate_performance(
-                ttft_sec=actual.ttft_sec,
-                total_turn_sec=actual.total_turn_sec,
-                runaway_prevented=actual.runaway_prevented,
-            )
-            s_fluency = self.scorer.evaluate_fluency(actual.response_text or tc["prompt"])
-
-            score_obj = self.scorer.compute_composite_score(
-                s_safety, s_routing, s_perf, s_fluency, details={"case_id": tc["id"]}
-            )
-            results.append(score_obj)
+        workers = (
+            max_workers
+            if max_workers is not None
+            else int(os.environ.get("LONLY_DLT_WORKERS", "4"))
+        )
+        if workers > 1:
+            from core.tool_pool import parallel_map
+            case_evals, pool_errs = parallel_map(self._evaluate_case, cases, max_workers=workers)
+            for idx, res_pair in enumerate(case_evals):
+                if res_pair is not None:
+                    sb, err = res_pair
+                    if sb is not None:
+                        results.append(sb)
+                    if err is not None:
+                        errors.append(err)
+                elif pool_errs[idx] is not None:
+                    errors.append(f"{cases[idx].get('id', '?')}: PoolError: {pool_errs[idx]}")
+        else:
+            for tc in cases:
+                sb, err = self._evaluate_case(tc)
+                if sb is not None:
+                    results.append(sb)
+                if err is not None:
+                    errors.append(err)
 
         total_duration = time.time() - start_all
         scored = len(results)
