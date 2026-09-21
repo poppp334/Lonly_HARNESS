@@ -22,4 +22,5 @@ models/sft/unsloth_compiled_cache/
 reference/
 .env
 *.gguf
-
+*.lock
+.test_*

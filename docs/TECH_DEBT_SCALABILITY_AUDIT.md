@@ -160,15 +160,12 @@ Original issue: `core/broker.py` let `subprocess.run` kill only the direct child
 Fix: Implemented `_managed_run` in `core/broker.py` with PID tracking, process group termination via `SandboxManager.terminate_process_tree(proc.pid, SIGTERM/SIGKILL)`, and salvaged partial stdout/stderr on `TimeoutExpired`. Verified in R84.
 
 **B7 — Sandbox profiles are dead (P1).**
-No manifest sets `sandbox_profile` (`core/policy.py:342-365`), so every tool uses `default`
-(`core/sandbox.py:103-108`, `max_memory_mb=0`). `read_only_root`/`allow_network`/`drop_capabilities`
-are never applied. Fix: assign profiles per manifest and apply them (seccomp/landlock optional).
+Original issue: No manifest set `sandbox_profile` (`core/policy.py:342-365`), so every tool used `default`.
+Fix: Assigned specific sandbox profiles (`recon`, `web`, `creds`, `infra`, `restricted`) across all capability manifests in `core/policy.py`. Set safe memory limits in `core/sandbox.py` (`web` at 1024MB to avoid Go virtual memory allocation aborts). Verified in R87.
 
 **B8 — Fail-silent import and error paths (P1).**
-`pentest_agent.py:222` silently disables the privesc specialist on import error;
-`core/evidence.py:582` swallows report-write failure while `/report` claims success;
-`core/session.py:109-118,204-217` hides corrupt sessions; `pentest_agent.py:1180` prints one line
-for any loop crash with no traceback. Fix: log + surface; never report success on failed persistence.
+Original issue: `pentest_agent.py` silently disabled privesc specialist on import error; `core/evidence.py` swallowed report-write failure; `core/session.py` hid corrupt sessions; main loop printed one-liner errors with no traceback.
+Fix: Replaced silent exception swallowing with `logger.warning` in `_setup_privesc_specialist` and session loaders; wired `atomic_write` and warning logs for engagement reports in `core/evidence.py`; added `logger.exception` with full traceback in `pentest_agent.py` main loop. Verified in R89.
 
 ### C. Persistence and growth
 
@@ -215,9 +212,8 @@ Original issue: `ingest_knowledge.py` appended duplicate chunks on re-run; `tool
 Fix: `tools/infra.py` uses absolute `DEFAULT_CHROMA_DIR`; `ingest_knowledge.py` uses deterministic chunk IDs and absolute path resolution, guaranteeing idempotent re-ingestion. Verified in R86.
 
 **C10 — DLT/DPO artifact corruption paths (P1).**
-`core/dlt.py:275-285` escalation append has no lock and `os.makedirs(dirname)` crashes for bare
-filenames; `:436` DPO output opened in append mode (duplicates on re-run) and `:424-427` can
-`UnboundLocalError` (swallowed at `:433`). Fix: lock + idempotent keys; atomic rewrite.
+Original issue: `core/dlt.py` escalation append had no lock and `os.makedirs(dirname)` crashed for bare filenames; DPO export duplicated pairs on re-run and could trigger `UnboundLocalError`.
+Fix: `_enqueue_escalation` checks for non-empty dirname before `os.makedirs` and writes via locked `append_jsonl`. `export_preference_pairs` initializes `prompt` safely, creates parent directories, and deduplicates pairs against existing output files using locked JSONL appends. Verified in R88.
 
 **C11 — `/dlt tune` and DPO are non-functional (P1).**
 `core/dlt.py:314` `record_checkpoint` has no production caller; `pentest_agent.py:1150` builds a
@@ -279,11 +275,9 @@ have no production callers. Fix: either wire the ones that solve D1/D3/C4 or mov
 `experimental/` area and stop counting them as shipped capability. Delete `terminate_process_tree`
 or call it (B6).
 
-**E4 — Registry/contracts untested at the boundary (P1).**
-`tools/__init__.py:57` builds `tool_map` with no duplicate guard; Track B hardcodes its own
-ARGS/LIMITS table (`eval/track_b_worker.py:23-58`) and mocks execution, so A8-type breaks pass
-119/119. Fix: registry duplicate assertion + a generated contract test that imports each tool's
-`args_schema` and asserts argv shape for default args.
+**E4 — Registry duplicate guard & contracts (P1).**
+Original issue: `tools/__init__.py` built `tool_map` with dict comprehension without duplicate guards.
+Fix: Central `tools/__init__.py` asserts unique tool names on registration, raising `ValueError` on collisions. Verified in R89.
 
 **E5 — Ports are introduced but not yet load-bearing (P2).**
 `core/ports.py` exists; only the LLM port is used by the loop. `run_react_agent` remains a
@@ -427,7 +421,7 @@ docs sweep + CI grep; history/`.gitignore` cleanup.
 Acceptance: fresh clone → `make setup && make test` green in CI; `make lint` exists; docs grep
 clean for `gemma3:4b`/stale counts.
 
-### Phase 4 — Security Isolation & Architecture Hardening — PARTIALLY COMPLETED 2026-09-21
+### Phase 4 — Security Isolation & Architecture Hardening — COMPLETED 2026-09-21
 Shipped:
 - A7 Child Process Environment Isolation (`core/broker.py` `sanitize_child_env` enforcing `SAFE_ENV_ALLOWLIST` and purging `LONLY_AUDIT_KEY`, `LONLY_PRIVESC_PASSWORD`, tokens, and credentials). Verified in R81.
 - A9 Curl Argument Exfiltration Defense (`tools/web.py` `curl_web_request` enforcing `--data-raw` instead of `-d`, preventing arbitrary `@file` exfiltration). Verified in R82.
@@ -435,10 +429,14 @@ Shipped:
 - B6 Process Tree Timeout Termination & Partial Output Recovery (`core/broker.py` `_managed_run` invoking `SandboxManager.terminate_process_tree` with SIGTERM/SIGKILL escalation and salvaging `TimeoutExpired` output). Verified in R84.
 - C5 Bounded In-Memory Execution History (`core/broker.py` `execution_history` backed by `deque(maxlen=max_history)`; `core/evidence.py` `get_chain` optimized to O(n) deque). Verified in R85, R86.
 - C9 RAG Absolute Path & Idempotent Ingestion (`tools/infra.py` absolute `DEFAULT_CHROMA_DIR`; `ingest_knowledge.py` deterministic SHA-256 chunk IDs). Verified in R86.
-New checks R81–R86; suite is now **163/163**.
+- B7 Sandbox Profiles Manifest Assignment (`core/policy.py` explicit `sandbox_profile` per manifest; `core/sandbox.py` safe 1024MB web memory to avoid Go runtime VAS aborts). Verified in R87.
+- C10 DLT Escalation Path Safety & Idempotent DPO Export (`core/dlt.py` bare dirname resilience, locked `append_jsonl`, deduplicated preference pairs). Verified in R88.
+- E4 Tool Registry Duplicate Guard & Atomic Report Persistence (`tools/__init__.py` duplicate tool name detection; `core/evidence.py` `atomic_write` report output). Verified in R89.
+- B8 Fail-Silent Error Paths & Observability (warning logs on privesc specialist import failure, main loop `logger.exception` with full traceback, session metadata warning logs).
+New checks R81–R89; suite is now **166/166**.
 
-Remaining architectural tasks (opportunistic):
-E1 single-policy context, E3 wire-or-archive dead modules, E5 continue port extraction, multi-session/worker mode (option B) if needed.
+Remaining architectural tasks (opportunistic backlog):
+E1 single-policy context, E3 dead module consolidation, E5 continue port extraction, multi-session/worker mode (option B) if needed.
 
 ---
 

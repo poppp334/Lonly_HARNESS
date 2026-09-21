@@ -49,6 +49,10 @@ def atomic_write_text(path: str, text: str) -> None:
         raise
 
 
+# Convenience alias
+atomic_write = atomic_write_text
+
+
 def atomic_write_json(path: str, data: Any) -> None:
     """Serialize `data` to JSON and write it atomically."""
     atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))

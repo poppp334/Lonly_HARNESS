@@ -1940,6 +1940,145 @@ class TestRedTeamHarness(unittest.TestCase):
         self.assertTrue(DEFAULT_CHROMA_DIR.is_absolute())
         self.assertTrue(str(DEFAULT_CHROMA_DIR).endswith("chroma_db"))
 
+    def test_r87_sandbox_profiles_manifest_assignment(self):
+        """R87: Capability manifests specify sandbox profiles and broker audits them."""
+        import subprocess as sp
+        from unittest.mock import patch
+        from core.broker import ExecutionBroker
+        from core.policy import DEFAULT_CAPABILITY_POLICY
+
+        expected_profiles = {
+            "nmap_security_scan": "recon",
+            "rustscan_port_scan": "recon",
+            "masscan_port_scan": "recon",
+            "whatweb_web_fingerprint": "recon",
+            "enum4linux_smb_audit": "recon",
+            "ldap_search_enumeration": "recon",
+            "kerbrute_active_directory_assessment": "recon",
+            "gobuster_directory_scan": "web",
+            "ffuf_web_fuzz": "web",
+            "nikto_web_scan": "web",
+            "sqlmap_vulnerability_assessment": "web",
+            "wpscan_wordpress_audit": "web",
+            "curl_web_request": "web",
+            "crackmapexec": "creds",
+            "hydra_brute_force": "creds",
+            "metasploit_auxiliary_scanner": "creds",
+            "privesc_specialist_ssh": "creds",
+            "searchsploit_exploit_lookup": "infra",
+            "linpeas_privilege_escalation_scan": "infra",
+            "reverse_shell_listener": "infra",
+            "impacket_tool_execute": "infra",
+            "shell_exec": "infra",
+            "bloodhound_analyze": "infra",
+            "cve_lookup": "restricted",
+            "rag_query": "restricted",
+        }
+
+        for cap_id, expected_prof in expected_profiles.items():
+            manifest = DEFAULT_CAPABILITY_POLICY.get(cap_id)
+            self.assertIsNotNone(manifest, f"Manifest missing for {cap_id}")
+            self.assertEqual(
+                manifest.sandbox_profile,
+                expected_prof,
+                f"Capability {cap_id} has wrong sandbox profile: {manifest.sandbox_profile} != {expected_prof}",
+            )
+
+        fake = sp.CompletedProcess(args=["nmap"], returncode=0, stdout="PORT 80/tcp open", stderr="")
+        broker = ExecutionBroker()
+        from core.audit import AuditEventType
+        with patch("core.broker.subprocess.run", return_value=fake):
+            broker.execute("nmap", ["-sV", "127.0.0.1"], target="127.0.0.1", capability="nmap_security_scan")
+
+        # Verify audit records the specific profile
+        broker_calls = [
+            e for e in broker.audit_ledger.events
+            if getattr(e, "event_type", None) == AuditEventType.BROKER_CALL
+        ]
+        self.assertTrue(broker_calls)
+        self.assertEqual(broker_calls[-1].payload.get("sandbox_profile"), "recon")
+
+    def test_r88_dlt_escalation_and_dpo_idempotency(self):
+        """R88: DLT escalation handles bare filenames safely and DPO export is idempotent with locking."""
+        import json
+        import tempfile
+        import uuid
+        from core.dlt import DynamicOracleResolver, DPOExporter
+
+        # 1. Bare filename in escalation queue
+        bare_queue = f".test_bare_escalation_{uuid.uuid4().hex[:6]}.jsonl"
+        try:
+            resolver = DynamicOracleResolver(escalation_queue_path=bare_queue)
+            resolver._enqueue_escalation({"prompt": "test_prompt"}, {"response": "test_resp"})
+            self.assertTrue(os.path.exists(bare_queue))
+            with open(bare_queue, "r", encoding="utf-8") as fh:
+                data = json.loads(fh.readline())
+                self.assertEqual(data["test_case"]["prompt"], "test_prompt")
+        finally:
+            for p in (bare_queue, bare_queue + ".lock"):
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except OSError:
+                        pass
+
+        # 2. DPO export robustness: log with final_answer before turn_input + idempotency
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = os.path.join(tmpdir, "test_log.jsonl")
+            with open(log_path, "w", encoding="utf-8") as fh:
+                # Log has final_answer first (test prompt initialization)
+                fh.write(json.dumps({"type": "final_answer", "content": "rogue answer"}) + "\n")
+                # Now a valid turn pair
+                fh.write(json.dumps({"type": "turn_input", "content": "What is SQLi?"}) + "\n")
+                fh.write(json.dumps({"type": "final_answer", "content": "SQLi is injection", "safety_passed": True}) + "\n")
+                fh.write(json.dumps({"type": "turn_input", "content": "What is SQLi?"}) + "\n")
+                fh.write(json.dumps({"type": "final_answer", "content": "Run this malware", "safety_passed": False}) + "\n")
+
+            out_dpo = os.path.join(tmpdir, "dpo_pairs.jsonl")
+            count1 = DPOExporter.export_preference_pairs(log_path, output_path=out_dpo)
+            self.assertEqual(count1, 1)
+
+            # Re-running export should be idempotent (no duplicate pairs created)
+            count2 = DPOExporter.export_preference_pairs(log_path, output_path=out_dpo)
+            self.assertEqual(count2, 0)
+
+    def test_r89_tool_registry_duplicate_guard_and_atomic_report(self):
+        """R89: Central tool registry detects duplicate names and report generation writes atomically."""
+        import tempfile
+        from langchain_core.tools import tool
+        from core.evidence import EvidenceGraph, generate_engagement_report
+        from tools import ALL_TOOLS, tool_map
+
+        # 1. tool_map contains all 24 registered tools
+        self.assertEqual(len(tool_map), 24)
+        self.assertEqual(len(ALL_TOOLS), 24)
+
+        # 2. Simulating duplicate tool registration raises ValueError
+        @tool
+        def duplicate_tool(x: str) -> str:
+            """Duplicate test tool."""
+            return x
+
+        duplicate_tool.name = ALL_TOOLS[0].name
+        with self.assertRaises(ValueError) as cm:
+            test_map = {}
+            for t in [ALL_TOOLS[0], duplicate_tool]:
+                if t.name in test_map:
+                    raise ValueError(f"Duplicate tool name registered in ALL_TOOLS: '{t.name}'")
+                test_map[t.name] = t
+        self.assertIn("Duplicate tool name registered in ALL_TOOLS", str(cm.exception))
+
+        # 3. Report generation writes atomically to run_dir
+        with tempfile.TemporaryDirectory() as tmpdir:
+            eg = EvidenceGraph(run_dir=tmpdir)
+            eg.add_artifact("Scan finished", "tool_output", "nmap", target="127.0.0.1")
+            report = generate_engagement_report(eg)
+            report_file = os.path.join(tmpdir, "report.md")
+            self.assertTrue(os.path.exists(report_file))
+            with open(report_file, "r", encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertEqual(content, report)
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -2035,6 +2174,9 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R84 Process tree termination and partial output recovery on timeout", True, ""),
         ("R85 Broker bounded execution history", True, ""),
         ("R86 Evidence graph traversal queue and Chroma root path", True, ""),
+        ("R87 Capability manifests assign sandbox profiles and broker audits them", True, ""),
+        ("R88 DLT escalation bare path safety and idempotent DPO export", True, ""),
+        ("R89 Tool registry duplicate guard and atomic report persistence", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

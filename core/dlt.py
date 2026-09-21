@@ -20,6 +20,8 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 
+from core.storage import append_jsonl, read_jsonl
+
 logger = logging.getLogger("lonly.dlt")
 
 # Default Gold Standard Baseline path
@@ -277,15 +279,16 @@ class DynamicOracleResolver:
 
     def _enqueue_escalation(self, test_case: Dict[str, Any], actual_output: Dict[str, Any]) -> None:
         """Enqueues unresolved adversarial edge cases for offline human review."""
-        os.makedirs(os.path.dirname(self.escalation_queue_path), exist_ok=True)
+        dir_path = os.path.dirname(self.escalation_queue_path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
         record = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "test_case": test_case,
             "actual_output": actual_output,
             "status": "pending_expert_review",
         }
-        with open(self.escalation_queue_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        append_jsonl(self.escalation_queue_path, record)
 
 
 # ==============================================================================
@@ -418,6 +421,7 @@ class DPOExporter:
         for log_file in log_files:
             try:
                 with open(log_file, "r", encoding="utf-8") as f:
+                    prompt = ""
                     for line in f:
                         line = line.strip()
                         if not line:
@@ -436,20 +440,38 @@ class DPOExporter:
             except Exception as e:
                 logger.debug(f"Error parsing log file {log_file}: {e}")
 
-        with open(output_path, "a", encoding="utf-8") as out:
-            for pos in positive_samples:
-                matching_neg = next((n for n in negative_samples if n["prompt"] == pos["prompt"]), None)
-                if matching_neg:
-                    pair = {
-                        "prompt": pos["prompt"],
-                        "chosen": pos["answer"],
-                        "rejected": matching_neg["answer"],
-                        "source": "Lonly_HARNESS_DLT_Ledger",
-                    }
-                    out.write(json.dumps(pair, ensure_ascii=False) + "\n")
-                    pairs_created += 1
+        dir_path = os.path.dirname(output_path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+
+        existing_prompts: set[str] = set()
+        if os.path.exists(output_path):
+            try:
+                for r in read_jsonl(output_path):
+                    if isinstance(r, dict) and "prompt" in r:
+                        existing_prompts.add(r["prompt"])
+            except Exception:
+                pass
+
+        for pos in positive_samples:
+            pos_prompt = pos.get("prompt", "")
+            if not pos_prompt or pos_prompt in existing_prompts:
+                continue
+            matching_neg = next((n for n in negative_samples if n.get("prompt") == pos_prompt), None)
+            if matching_neg:
+                pair = {
+                    "prompt": pos_prompt,
+                    "chosen": pos["answer"],
+                    "rejected": matching_neg["answer"],
+                    "source": "Lonly_HARNESS_DLT_Ledger",
+                }
+                append_jsonl(output_path, pair)
+                existing_prompts.add(pos_prompt)
+                pairs_created += 1
 
         return pairs_created
+
+    export_dpo_pairs = export_preference_pairs
 
 
 # ==============================================================================

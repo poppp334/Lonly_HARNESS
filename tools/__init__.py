@@ -54,4 +54,8 @@ ALL_TOOLS = [
     curl_web_request, shell_exec, cve_lookup, bloodhound_analyze, rag_query,
 ]
 
-tool_map = {t.name: t for t in ALL_TOOLS}
+tool_map: dict = {}
+for _tool in ALL_TOOLS:
+    if _tool.name in tool_map:
+        raise ValueError(f"Duplicate tool name registered in ALL_TOOLS: '{_tool.name}'")
+    tool_map[_tool.name] = _tool

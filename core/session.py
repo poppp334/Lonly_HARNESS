@@ -10,6 +10,7 @@ Enforces:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import time
@@ -17,6 +18,8 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+
+logger = logging.getLogger("lonly.session")
 
 from core.storage import (
     append_jsonl,
@@ -193,7 +196,8 @@ class SessionManager:
         try:
             with open(meta_file, "r", encoding="utf-8") as fh:
                 meta = json.load(fh)
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Failed to parse session metadata in %s: %s", meta_file, exc)
             meta = {}
 
         messages = [
@@ -230,8 +234,8 @@ class SessionManager:
                     try:
                         with open(meta_file, "r", encoding="utf-8") as fh:
                             results.append(json.load(fh))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning("Corrupted session metadata in %s: %s", meta_file, exc)
         results.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
         return results
 

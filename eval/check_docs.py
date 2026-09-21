@@ -28,7 +28,7 @@ FORBIDDEN_PATTERNS = [
     (re.compile(r"gemma3:4b", re.IGNORECASE), "Deprecated model reference 'gemma3:4b' (use 'phi4-mini' or 'privesc-llm-rl:4b')"),
 ]
 
-REQUIRED_COUNT = 163
+REQUIRED_COUNT = 166
 
 
 def check_docs() -> bool:

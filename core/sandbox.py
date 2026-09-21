@@ -102,7 +102,7 @@ PROFILES = {
     # reserve large virtual address spaces and RLIMIT_AS causes false kills.
     "default": SandboxProfile(name="default", max_memory_mb=0, max_cpu_seconds=300, max_pids=128),
     "recon": SandboxProfile(name="recon", max_memory_mb=256, max_cpu_seconds=60),
-    "web": SandboxProfile(name="web", max_memory_mb=512, max_cpu_seconds=120),
+    "web": SandboxProfile(name="web", max_memory_mb=1024, max_cpu_seconds=120),
     "creds": SandboxProfile(name="creds", max_memory_mb=512, max_cpu_seconds=120),
     "infra": SandboxProfile(name="infra", max_memory_mb=1024, max_cpu_seconds=300),
     "restricted": SandboxProfile(name="restricted", max_memory_mb=128, max_cpu_seconds=30, max_pids=16),

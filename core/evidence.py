@@ -18,9 +18,12 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 from typing import Optional
 
+import logging
 import uuid
 
-from core.storage import append_jsonl, atomic_write_json, ensure_dir
+from core.storage import append_jsonl, atomic_write, atomic_write_json, ensure_dir
+
+logger = logging.getLogger("lonly.evidence")
 
 
 class Provenance(str, Enum):
@@ -584,8 +587,7 @@ def generate_engagement_report(graph: EvidenceGraph, title: str = "LONLY Pentest
     if graph.run_dir:
         report_path = os.path.join(graph.run_dir, "report.md")
         try:
-            with open(report_path, "w", encoding="utf-8") as fh:
-                fh.write(report_md)
-        except Exception:
-            pass
+            atomic_write(report_path, report_md)
+        except Exception as exc:
+            logger.warning("Failed to atomically write report to %s: %s", report_path, exc)
     return report_md
