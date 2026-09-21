@@ -544,27 +544,27 @@ SQL Injection (SQLi) คือช่องโหว่ทางความป�
 ### Example 2: In-Scope Tactical Reconnaissance (Mode 2)
 ```text
 ╭─ lonly [Default Session • target: 127.0.0.1]
-╰─> /scope add kaigo.thai.ac
-[+] Target 'kaigo.thai.ac' added to authorized scope.
-    Current In-Scope Targets: ['127.0.0.1', 'kaigo.thai.ac']
+╰─> /scope add webme-mu.vercel.app
+[+] Target 'webme-mu.vercel.app' added to authorized scope.
+    Current In-Scope Targets: ['127.0.0.1', 'webme-mu.vercel.app']
 
-╭─ lonly [Default Session • target: kaigo.thai.ac]
-╰─> ช่วย fingerprint เว็บ kaigo.thai.ac ให้หน่อยครับ
+╭─ lonly [Default Session • target: webme-mu.vercel.app]
+╰─> ช่วย fingerprint เว็บ webme-mu.vercel.app ให้หน่อยครับ
 
 [*] LONLY is analyzing and planning...
-[+] LONLY กำลังรัน Tool: whatweb_web_fingerprint -> {'target_url': 'http://kaigo.thai.ac'}
-[=] ผลลัพธ์กลับมาแล้ว (ความยาว: 702 ตัวอักษร)
+[+] LONLY กำลังรัน Tool: whatweb_web_fingerprint -> {'target_url': 'https://webme-mu.vercel.app'}
+[=] ผลลัพธ์กลับมาแล้ว (ความยาว: 645 ตัวอักษร)
 
 === LONLY ===
-Web server fingerprint for kaigo.thai.ac:
-- Web Server: Apache 2.4.49
-- PHP Version: 8.2.31
-- JavaScript: jQuery 1.11.2, Bootstrap
-- IP Address: 159.223.76.239
-- Page Title: วิทยาลัยเทคโนโลยีไคโกะอุดรธานี
+Web server fingerprint for webme-mu.vercel.app:
+- Platform: Vercel Cloud Infrastructure
+- HTTPS: TLS 1.3 / Strict-Transport-Security enabled
+- Frontend Framework: Next.js / React
+- CDN / Edge: Vercel Edge Network
+- Headers: X-Vercel-Id, Cache-Control: s-maxage=31536000
 
 [EVIDENCE LOG]
-- Tool: whatweb_web_fingerprint | Output Hash: 7e2a... | Target: http://kaigo.thai.ac
+- Tool: whatweb_web_fingerprint | Output Hash: 7e2a... | Target: https://webme-mu.vercel.app
 ```
 
 ---
