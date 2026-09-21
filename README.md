@@ -54,14 +54,25 @@ Unauthorized access to computer systems, networks, or digital infrastructure is 
   - Enforces `num_predict=1024` and explicit `stop=["\nObservation:"]` token bounding in Ollama to prevent infinite token generation loops and ensure sub-2s turnaround.
 - **Zero Shell Subprocess Invariant (`shell=False`)**:
   - Eliminates all shell metacharacter injection vectors (`;`, `&&`, `||`, `` ` ``, `$()`) via discrete `argv` execution and AST-level static verification.
+- **POSIX Sandbox Profiles & Process Tree Termination**:
+  - Assigns dedicated sandbox containment profiles (`recon`, `web`, `creds`, `infra`, `restricted`) across all 24 tools, enforcing CPU quotas, PID limits, and process-group isolation (`setpgrp`).
+  - Automatically terminates the entire process tree on timeout via `SandboxManager.terminate_process_tree` (`SIGTERM` with `SIGKILL` escalation) and salvages partial stdout/stderr.
+- **Child Process Secret Scrubbing**:
+  - Subprocesses inherit only an explicit allowlist of safe environment variables (`SAFE_ENV_ALLOWLIST`), unconditionally purging `LONLY_AUDIT_KEY`, passwords, cloud credentials, and sensitive tokens.
+- **Resilient LLM Client with Circuit Breaker**:
+  - Centralized model client (`core/model_client.py`) guards all LLM calls with timeouts, exponential backoff retries, and an automated circuit breaker failing fast on transport errors.
+- **Deterministic Token-Bucket Rate Limiting**:
+  - Manifest-enforced rate limiters (`core/ratelimit.py`) prevent burst flooding across targets and capabilities.
+- **Session-Isolated Context Workspaces**:
+  - Zero process-global mutable state. Each engagement owns an isolated `SessionContext` with atomic file writes and locked JSONL appends (`core/storage.py`), token-budgeted history compaction, and retention management.
 - **Content-Addressable SHA-256 DAG Evidence Graph**:
   - Every finding reported in engagement summaries is cryptographically anchored to exact raw tool stdout hashes and execution provenance.
 - **Provenance Fencing Against Indirect Prompt Injection**:
   - Raw tool outputs from scanned targets are strictly encapsulated within `<untrusted_observation>` XML provenance tags, preventing adversarial payload hijacking of LLM reasoning.
 - **HMAC-SHA256 Write-Ahead Audit Ledger (WAL)**:
-  - Cryptographically chained event log with offline mathematical integrity verification.
+  - Cryptographically chained event log with offline mathematical integrity verification, file locking, fsync, and automatic size-cap rotation.
 - **Human-in-the-Loop Risk Budget & Confirmation Gates**:
-  - Intrusive tools (e.g., `hydra`, `metasploit`, `sqlmap`, `nikto`) require explicit operator authorization before execution.
+  - Intrusive tools (e.g., `hydra`, `metasploit`, `sqlmap`, `nikto`, `shell_exec`) require explicit operator authorization before execution.
   - Risk points accumulate per task; exceeding risk budget triggers mandatory interactive review checkpoints.
 
 ---
@@ -205,32 +216,32 @@ The DLT engine continuously mines the forensic audit ledger to curate preference
 
 All 24 tools in `tools/` use discrete argument arrays (`argv`), strict timeout limits, and resilient parameter schemas:
 
-| Category | Tool Identifier | Backing Binary | Primary Function | Authorization / Risk Level |
-| :--- | :--- | :--- | :--- | :--- |
-| **Reconnaissance** | `rustscan_port_scan` | `rustscan` | Fast TCP port discovery across top ports or custom ranges | Low Risk (Standard Scope) |
-| | `nmap_security_scan` | `nmap` | Service version detection, OS identification, NSE scripts | Low Risk (Standard Scope) |
-| | `masscan_port_scan` | `masscan` | Asynchronous high-rate CIDR subnet and port scanning | Low Risk (Standard Scope) |
-| | `whatweb_web_fingerprint` | `whatweb` | Web server, CMS, and technology fingerprinting | Low Risk (Standard Scope) |
-| | `enum4linux_smb_audit` | `enum4linux` | Windows/Samba SMB user and share enumeration | Medium Risk (Dangerous Gate) |
-| | `ldap_search_enumeration` | `ldapsearch` | Active Directory and OpenLDAP query enumeration | Low Risk (Standard Scope) |
-| | `kerbrute_active_directory_assessment` | `kerbrute` | Active Directory username enumeration and spraying | Medium Risk (Scope Bound) |
-| **Web Assessment** | `gobuster_directory_scan` | `gobuster` | Directory and file path brute-forcing | Low Risk (Standard Scope) |
-| | `ffuf_web_fuzz` | `ffuf` | High-speed HTTP parameter, path, and header fuzzing | Low Risk (Standard Scope) |
-| | `nikto_web_scan` | `nikto` | Comprehensive web server vulnerability scan | Medium Risk (Dangerous Gate) |
-| | `sqlmap_vulnerability_assessment` | `sqlmap` | Automated SQL injection detection and testing | High Risk (Dangerous Gate) |
-| | `wpscan_wordpress_audit` | `wpscan` | WordPress plugin, theme, and user security audit | Low Risk (Standard Scope) |
-| | `curl_web_request` | `curl` | HTTP request crafting, header inspection, and response retrieval | Low Risk (Standard Scope) |
-| **Credentials & Lateral** | `crackmapexec` | `crackmapexec` / `nxc` | Protocol authentication testing (SMB, WinRM, SSH) | High Risk (Confirm-Required) |
-| | `hydra_brute_force` | `hydra` | Multi-protocol network login brute-forcing | High Risk (Confirm-Required) |
-| | `metasploit_auxiliary_scanner` | `msfconsole` | Execution of Metasploit auxiliary scanner modules | High Risk (Confirm-Required) |
-| | `reverse_shell_listener` | `nc` | Network listener configuration to capture reverse shells | High Risk (Interactive) |
-| **Infra & Intelligence** | `linpeas_privilege_escalation_scan` | `linpeas.sh` | Local Linux privilege escalation auditing | Medium Risk (Standard Scope) |
-| | `searchsploit_exploit_lookup` | `searchsploit` | Offline Exploit-DB vulnerability search | Low Risk (Offline) |
-| | `cve_lookup` | Python / NVD API | NVD CVE metadata query and local exploit cross-check | Low Risk (Offline/Online) |
-| | `impacket_tool_execute` | `impacket` | Active Directory protocol attacks (secretsdump, wmiexec, etc.) | High Risk (Scope Bound) |
-| | `bloodhound_analyze` | Python / BloodHound | Offline SharpHound collection ingest and graph analysis | Low Risk (Offline) |
-| | `rag_query` | `ChromaDB` / `nomic-embed-text` | Semantic search over curated pentesting playbooks | Low Risk (Offline) |
-| | `shell_exec` | Subprocess Broker | Policy-monitored host command execution with discrete `argv` | Critical Risk (Confirm-Required) |
+| Category | Tool Identifier | Backing Binary | Primary Function | Authorization / Risk Level | Sandbox Profile |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| **Reconnaissance** | `rustscan_port_scan` | `rustscan` | Fast TCP port discovery across top ports or custom ranges | Low Risk (Standard Scope) | `recon` |
+| | `nmap_security_scan` | `nmap` | Service version detection, OS identification, NSE scripts | Low Risk (Standard Scope) | `recon` |
+| | `masscan_port_scan` | `masscan` | Asynchronous high-rate CIDR subnet and port scanning | Low Risk (Standard Scope) | `recon` |
+| | `whatweb_web_fingerprint` | `whatweb` | Web server, CMS, and technology fingerprinting | Low Risk (Standard Scope) | `recon` |
+| | `enum4linux_smb_audit` | `enum4linux` | Windows/Samba SMB user and share enumeration | Medium Risk (Dangerous Gate) | `recon` |
+| | `ldap_search_enumeration` | `ldapsearch` | Active Directory and OpenLDAP query enumeration | Low Risk (Standard Scope) | `recon` |
+| | `kerbrute_active_directory_assessment` | `kerbrute` | Active Directory username enumeration and spraying | Medium Risk (Scope Bound) | `recon` |
+| **Web Assessment** | `gobuster_directory_scan` | `gobuster` | Directory and file path brute-forcing | Low Risk (Standard Scope) | `web` |
+| | `ffuf_web_fuzz` | `ffuf` | High-speed HTTP parameter, path, and header fuzzing | Low Risk (Standard Scope) | `web` |
+| | `nikto_web_scan` | `nikto` | Comprehensive web server vulnerability scan | Medium Risk (Dangerous Gate) | `web` |
+| | `sqlmap_vulnerability_assessment` | `sqlmap` | Automated SQL injection detection and testing | High Risk (Dangerous Gate) | `web` |
+| | `wpscan_wordpress_audit` | `wpscan` | WordPress plugin, theme, and user security audit | Low Risk (Standard Scope) | `web` |
+| | `curl_web_request` | `curl` | HTTP request crafting, header inspection, and response retrieval | Low Risk (Standard Scope) | `web` |
+| **Credentials & Lateral** | `crackmapexec` | `crackmapexec` / `nxc` | Protocol authentication testing (SMB, WinRM, SSH) | High Risk (Confirm-Required) | `creds` |
+| | `hydra_brute_force` | `hydra` | Multi-protocol network login brute-forcing | High Risk (Confirm-Required) | `creds` |
+| | `metasploit_auxiliary_scanner` | `msfconsole` | Execution of Metasploit auxiliary scanner modules | High Risk (Confirm-Required) | `creds` |
+| | `reverse_shell_listener` | `nc` | Network listener configuration to capture reverse shells | High Risk (Interactive) | `infra` |
+| **Infra & Intelligence** | `linpeas_privilege_escalation_scan` | `linpeas.sh` | Local Linux privilege escalation auditing | Medium Risk (Standard Scope) | `infra` |
+| | `searchsploit_exploit_lookup` | `searchsploit` | Offline Exploit-DB vulnerability search | Low Risk (Offline) | `infra` |
+| | `cve_lookup` | Python / NVD API | NVD CVE metadata query and local exploit cross-check | Low Risk (Offline/Online) | `restricted` |
+| | `impacket_tool_execute` | `impacket` | Active Directory protocol attacks (secretsdump, wmiexec, etc.) | High Risk (Scope Bound) | `infra` |
+| | `bloodhound_analyze` | Python / BloodHound | Offline SharpHound collection ingest and graph analysis | Low Risk (Offline) | `infra` |
+| | `rag_query` | `ChromaDB` / `nomic-embed-text` | Semantic search over curated pentesting playbooks | Low Risk (Offline) | `restricted` |
+| | `shell_exec` | Subprocess Broker | Policy-monitored host command execution with discrete `argv` | Critical Risk (Confirm-Required) | `infra` |
 
 ---
 
@@ -330,13 +341,16 @@ make setup
 # 3. System Diagnostic & Health Verification
 make doctor
 
-# 4. Run Complete 153-Check Acceptance Suite
+# 4. Run Complete 166-Check Acceptance Suite
 make test
 
 # 5. Run DLT Tier 1 Baseline Benchmark Scorecard
 make dlt-benchmark
 
-# 6. Launch the Interactive LONLY Shell
+# 6. Run Code & Documentation Linters
+make lint
+
+# 7. Launch the Interactive LONLY Shell
 make run
 ```
 
@@ -450,7 +464,7 @@ and deliberately keeps the system prompt out (it is injected per-target by
 `models/privesc_protocol.py` to avoid scenario-specific tech debt):
 
 ```bash
-sed "s|__GGUF__|/home/windows/models/privesc-llm-4b-rl-Q4_K_M.gguf|" \
+sed "s|__GGUF__|$HOME/models/privesc-llm-4b-rl-Q4_K_M.gguf|" \
   models/Modelfile.template > /tmp/Modelfile
 ollama create privesc-llm-rl:4b -f /tmp/Modelfile
 ollama run --verbose privesc-llm-rl:4b "Say hello in one short sentence."
@@ -560,9 +574,15 @@ Web server fingerprint for kaigo.thai.ac:
 
 ```
 Lonly_HARNESS/
-├── Makefile                           # Automation targets (run, test, dlt-benchmark, dlt-tune, doctor, setup)
+├── .github/                           # CI/CD automation workflows
+│   └── workflows/
+│       └── ci.yml                     # GitHub Actions CI workflow (lint, doctor, acceptance, security gate)
+├── Makefile                           # Automation targets (run, test, dlt-benchmark, dlt-tune, doctor, setup, lint)
 ├── setup.sh                           # One-click bootstrap script
 ├── requirements.txt                   # Core Python dependencies
+├── requirements-dev.txt               # Development & linting dependencies
+├── requirements-sft.txt               # SFT training dependencies
+├── pyproject.toml                     # Project packaging, metadata & tool configs (ruff)
 ├── AGENTS.md                          # Multi-agent role boundaries & specification
 ├── LICENSE                            # MIT License
 ├── pentest_agent.py                   # Main Dual-Mode CLI shell & ReAct agent runtime
@@ -578,6 +598,7 @@ Lonly_HARNESS/
 │   ├── benchmarks.py                  # Ground-truth benchmark evaluation engine
 │   ├── broker.py                      # ExecutionBroker & dynamic TargetPolicy synchronization
 │   ├── cli_reader.py                  # Readline arrow key history & tab autocompleter
+│   ├── config.py                      # Centralized runtime configuration & structured logging
 │   ├── dlt.py                         # DLT Engine, Scorer, 4-Tier Oracle & Pareto Optimizer
 │   ├── doctor.py                      # System diagnostics & dependency validator
 │   ├── embeddings.py                  # Centralized Ollama nomic-embed-text provider & prefix formatter
@@ -598,6 +619,7 @@ Lonly_HARNESS/
 │   ├── sandbox.py                     # OS sandbox profiles & process containment
 │   ├── session.py                     # Persistent session workspaces (~/.lonly/sessions/)
 │   ├── session_context.py             # Per-engagement state (scope, history, broker, evidence)
+│   ├── signals.py                     # Graceful signal handling & child process cleanup
 │   ├── state.py                       # FindingsLog, TaskTree, phase routing table
 │   ├── storage.py                     # Atomic writes, locked JSONL appends, 0700 dirs
 │   ├── telemetry.py                   # Distributed tracing & provenance query engine
@@ -618,6 +640,9 @@ Lonly_HARNESS/
 │   ├── smoke_test.py                  # Format adherence verification
 │   ├── benchmark_runner.py            # Benchmark evaluation runner
 │   ├── analyze_benchmark.py           # Trajectory and benchmark log analyzer
+│   ├── Modelfile.template             # Ollama model definition template with tuned hyperparameters
+│   ├── merge_adapters.sh              # Adapter merge utility
+│   ├── quantize_and_serve.sh          # GGUF quantization and serving pipeline
 │   └── sft/                           # Local SFT training flywheel (Unsloth QLoRA, GGUF merge)
 ├── eval/                              # Acceptance & Evaluation Suite (166/166 checks)
 │   ├── eval_lonly.py                  # Unified acceptance test runner
@@ -628,6 +653,7 @@ Lonly_HARNESS/
 │   ├── track_c_scorer.py              # Trajectory quality scorer (Track C)
 │   ├── track_dlt.py                   # DLT framework invariant tests (Track DLT)
 │   ├── track_e_cli.py                 # CLI interactive & edge case test suite (Track E)
+│   ├── track_f_privesc.py             # PrivEsc specialist delegation tests (Track F)
 │   └── track_r_redteam.py             # 89-check adversarial red team suite (Track R)
 ├── setup/                             # Native system tool installer scripts
 │   └── install-system-tools.sh        # Arch/Omarchy/Kali native package & wordlist installer
@@ -635,7 +661,9 @@ Lonly_HARNESS/
 │   ├── DLT.md                         # Dynamics Language Test (DLT) Technical Innovation Specification
 │   ├── Plan-implement.md              # Production implementation roadmap
 │   ├── architecture-upgrade-map.md    # Architecture upgrade map
-│   └── cybersecurity-harness-research.md # Academic harness research & references
+│   ├── cybersecurity-harness-research.md # Academic harness research & references
+│   ├── TECH_DEBT_SCALABILITY_AUDIT.md # Multi-phase tech debt & scalability architecture audit
+│   └── SKILL_ANALYSIS_LONLY.md        # Antigravity skill ecosystem integration analysis
 └── README.md
 ```
 
