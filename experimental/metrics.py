@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""core/metrics.py — Operational Metrics & Reliability Engine for LONLY v2.
+"""experimental/metrics.py — Operational Metrics & Reliability Engine for LONLY v2.
 
 Enforces:
 - Continuous tracking of Security, Reliability, Agent Quality, and Operations KPIs.

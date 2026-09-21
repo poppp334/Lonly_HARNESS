@@ -60,12 +60,12 @@ sessions:
 
 lint:
 	@echo "[+] Running ruff lint check..."
-	@$(PYTHON) -m ruff check core/ tools/ eval/ models/ pentest_agent.py
+	@$(PYTHON) -m ruff check core/ tools/ eval/ models/ experimental/ pentest_agent.py
 	@echo "[+] Running documentation integrity check..."
 	@$(PYTHON) eval/check_docs.py
 
 clean:
-	@rm -rf __pycache__ core/__pycache__ tools/__pycache__ eval/__pycache__ models/__pycache__ models/sft/__pycache__
+	@rm -rf __pycache__ core/__pycache__ tools/__pycache__ eval/__pycache__ models/__pycache__ models/sft/__pycache__ experimental/__pycache__
 	@rm -rf unsloth_compiled_cache models/sft/unsloth_compiled_cache .pytest_cache .ruff_cache
 	@rm -rf runs/ .lonly/
 	@rm -f session_log.jsonl *.wal* *.log dlt_escalation_queue.jsonl dpo_preference_pairs.jsonl

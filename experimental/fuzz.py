@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""core/fuzz.py — Adversarial Property-Based Fuzzer & Security Invariant Tester for LONLY v2.
+"""experimental/fuzz.py — Adversarial Property-Based Fuzzer & Security Invariant Tester for LONLY v2.
 
 Enforces:
 - Automated property-based fuzzing across policy parsers, extractors, and claim verifiers.
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import random
 import string
-from core.extractor import StructuredFactExtractor
+from experimental.extractor import StructuredFactExtractor
 from core.policy import TargetPolicy
 
 

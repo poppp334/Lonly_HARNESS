@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""core/orchestrator.py — DAG Task Graph Orchestrator for LONLY v2.
+"""experimental/orchestrator.py — DAG Task Graph Orchestrator for LONLY v2.
 
 Enforces:
 - Directed Acyclic Graph (DAG) task dependency and branching engine.

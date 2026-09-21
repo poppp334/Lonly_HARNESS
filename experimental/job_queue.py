@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""core/queue.py — Transactional Job Queue & Circuit Breaker Engine for LONLY v2.
+"""experimental/job_queue.py — Transactional Job Queue & Circuit Breaker Engine for LONLY v2.
 
 Enforces:
 - Reliable asynchronous job queueing, retries, and worker concurrency controls.

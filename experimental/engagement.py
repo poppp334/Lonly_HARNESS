@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""core/engagement.py — First-Class Engagement & Multi-Entity Model for LONLY v2.
+"""experimental/engagement.py — First-Class Engagement & Multi-Entity Model for LONLY v2.
 
 Enforces:
 - Formal hierarchy: Organization -> User -> Engagement -> Scope -> Run -> Task -> Execution -> Finding.

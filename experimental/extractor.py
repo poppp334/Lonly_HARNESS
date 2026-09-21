@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""core/extractor.py — Deterministic Structured Fact Extractor for LONLY v2.
+"""experimental/extractor.py — Deterministic Structured Fact Extractor for LONLY v2.
 
 Enforces:
 - Structured parsing of raw tool outputs into typed security facts.

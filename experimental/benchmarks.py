@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""core/benchmarks.py — Ground-Truth Benchmark Lab Evaluation Engine for LONLY v2.
+"""experimental/benchmarks.py — Ground-Truth Benchmark Lab Evaluation Engine for LONLY v2.
 
 Enforces:
 - Formal ground-truth specifications for security labs (hosts, services, vulns, creds, privesc).

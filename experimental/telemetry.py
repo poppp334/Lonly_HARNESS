@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""core/telemetry.py — First-Class Observability & Distributed Tracing for LONLY v2.
+"""experimental/telemetry.py — First-Class Observability & Distributed Tracing for LONLY v2.
 
 Enforces:
 - W3C-compatible correlation across Trace, Engagement, Run, Task, Execution, Model, and Decision IDs.

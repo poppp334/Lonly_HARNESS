@@ -460,7 +460,7 @@ class TestRedTeamHarness(unittest.TestCase):
 
     def test_r24_structured_fact_extractor_and_context_hygiene(self):
         """R24: StructuredFactExtractor extracts clean verified facts from noisy/adversarial outputs."""
-        from core.extractor import StructuredFactExtractor
+        from experimental.extractor import StructuredFactExtractor
 
         raw_noisy_output = (
             "Starting Nmap 7.94 at 2026-08-27\n"
@@ -500,7 +500,7 @@ class TestRedTeamHarness(unittest.TestCase):
 
     def test_r26_engagement_manager_and_entity_hierarchy(self):
         """R26: EngagementManager tracks full multi-entity hierarchy and operator approvals."""
-        from core.engagement import EngagementManager, UserRole
+        from experimental.engagement import EngagementManager, UserRole
 
         em = EngagementManager()
         org = em.create_organization("Acme Corp")
@@ -518,7 +518,7 @@ class TestRedTeamHarness(unittest.TestCase):
 
     def test_r27_dag_task_graph_orchestration(self):
         """R27: TaskGraphDAG manages non-linear task dependencies and cascading readiness."""
-        from core.orchestrator import TaskGraphDAG, TaskStatus
+        from experimental.orchestrator import TaskGraphDAG, TaskStatus
 
         dag = TaskGraphDAG()
         t1 = dag.add_task("t1", "Port Discovery", "recon", "10.0.0.1")
@@ -547,7 +547,7 @@ class TestRedTeamHarness(unittest.TestCase):
 
     def test_r28_multi_dimensional_risk_policy_engine(self):
         """R28: RiskPolicyEngine enforces multi-dimensional thresholds and human-in-the-loop gates."""
-        from core.risk import RiskDecision, RiskPolicyEngine, RiskVector
+        from experimental.risk import RiskDecision, RiskPolicyEngine, RiskVector
 
         engine = RiskPolicyEngine()
 
@@ -570,7 +570,7 @@ class TestRedTeamHarness(unittest.TestCase):
 
     def test_r29_property_based_adversarial_fuzzing(self):
         """R29: AdversarialFuzzer validates zero crashes and zero scope bypasses across mutated payloads."""
-        from core.fuzz import AdversarialFuzzer
+        from experimental.fuzz import AdversarialFuzzer
 
         passed_policy, total_policy = AdversarialFuzzer.fuzz_target_policy(iterations=25)
         self.assertEqual(passed_policy, total_policy)
@@ -580,7 +580,7 @@ class TestRedTeamHarness(unittest.TestCase):
 
     def test_r30_production_metrics_and_zero_security_defect_invariants(self):
         """R30: MetricsCollector accurately computes KPIs and asserts zero security defect invariant."""
-        from core.metrics import MetricsCollector
+        from experimental.metrics import MetricsCollector
 
         collector = MetricsCollector()
         collector.record_execution(duration_ms=45.2, success=True)
@@ -607,7 +607,7 @@ class TestRedTeamHarness(unittest.TestCase):
 
     def test_r32_benchmark_ground_truth_and_hallucination_evaluation(self):
         """R32: BenchmarkEvaluator computes exact precision, recall, and hallucination rates against lab ground truth."""
-        from core.benchmarks import BenchmarkEvaluator, LINUX_WEB_LAB
+        from experimental.benchmarks import BenchmarkEvaluator, LINUX_WEB_LAB
 
         # Perfect run against Linux Web Lab
         res = BenchmarkEvaluator.evaluate_findings(
@@ -632,7 +632,7 @@ class TestRedTeamHarness(unittest.TestCase):
 
     def test_r33_transactional_job_queue_and_circuit_breaker(self):
         """R33: JobQueue ensures retries and CircuitBreaker trips on consecutive failures."""
-        from core.job_queue import CircuitBreaker, CircuitState, JobQueue, JobState
+        from experimental.job_queue import CircuitBreaker, CircuitState, JobQueue, JobState
 
         cb = CircuitBreaker(failure_threshold=2, reset_timeout_seconds=5.0)
         jq = JobQueue(circuit_breaker=cb)
@@ -663,7 +663,7 @@ class TestRedTeamHarness(unittest.TestCase):
 
     def test_r34_telemetry_tracing_and_action_provenance_query(self):
         """R34: TelemetryTracer tracks span hierarchy and answers 'Why did LONLY run this action?'."""
-        from core.telemetry import TelemetryTracer
+        from experimental.telemetry import TelemetryTracer
 
         tracer = TelemetryTracer()
         # 1. Root Planner Span
@@ -699,7 +699,7 @@ class TestRedTeamHarness(unittest.TestCase):
 
     def test_r35_model_boundary_role_separation(self):
         """R35: Planner, Specialist, and Verifier roles maintain strict interface boundaries."""
-        from core.agent_roles import PlannerRole, SpecialistRole, VerifierRole
+        from experimental.agent_roles import PlannerRole, SpecialistRole, VerifierRole
         from core.evidence import ClaimType, EvidenceGraph, TypedClaim
 
         # 1. Planner generates structured proposal (no execution power)

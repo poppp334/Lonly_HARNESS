@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""core/risk.py — Multi-Dimensional Risk Policy Engine for LONLY v2.
+"""experimental/risk.py — Multi-Dimensional Risk Policy Engine for LONLY v2.
 
 Enforces:
 - Multi-dimensional risk vectors (network exposure, credential use, privilege, destructive potential, persistence, blast radius).

@@ -62,6 +62,17 @@ Lonly_HARNESS/
 │   ├── track_f_privesc.py    # PrivEsc specialist delegation tests
 │   ├── track_r_redteam.py    # Adversarial red-team / security boundary suite (91 checks)
 │   └── track_dlt.py          # DLT framework invariants
+├── experimental/             # Research prototypes, extended schemas, and enterprise specifications
+│   ├── orchestrator.py       # DAG task graph orchestrator
+│   ├── job_queue.py          # Transactional job queue & circuit breaker
+│   ├── telemetry.py          # Distributed tracing & provenance query engine
+│   ├── metrics.py            # Operational metrics & reliability engine
+│   ├── engagement.py         # Multi-entity engagement and run hierarchy
+│   ├── agent_roles.py        # Formal multi-model role specifications
+│   ├── benchmarks.py         # Ground-truth benchmark evaluation engine
+│   ├── risk.py               # Multi-dimensional risk matrix
+│   ├── extractor.py          # Structured fact extractor
+│   └── fuzz.py               # Property-based adversarial fuzzer
 ├── knowledge/                # Markdown cheat sheets for ChromaDB RAG
 ├── ingest_knowledge.py       # ChromaDB vector store ingestion script
 ├── requirements.txt          # Pinned core Python dependencies

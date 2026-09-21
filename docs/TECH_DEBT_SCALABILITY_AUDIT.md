@@ -259,14 +259,9 @@ Fix: Agent confirmation gate tracks the real operator decision (`operator_approv
 Original issue: Model names were declared separately across `pentest_agent.py`, `core/state.py`, and `core/config.py`; carryover decay logic was duplicated between `get_carryover_risk` and `build_checkpoint_header`; target cleaning had redundant regex/splits that broke CIDR notation in `/scope` and scope prompts.
 Fix: Model names unified to single source via `core.config.get_config()`; carryover decay consolidated into `compute_carryover_decay()`; scope and target cleaning standardized on `tools.base.clean_target()` preserving CIDR masks.
 
-**E3 — Dead "enterprise" modules (P1).**
-`core/orchestrator.py`, `core/job_queue.py`, `core/telemetry.py`, `core/metrics.py`,
-`core/engagement.py`, `core/agent_roles.py`, `core/benchmarks.py`, `core/risk.py`,
-`core/extractor.py`, `core/fuzz.py` are referenced only by `eval/track_r_redteam.py`.
-`RiskPolicyEngine`, `TaskGraphDAG`, `GLOBAL_TRACER`, `DEFAULT_METRICS`, `SecretVault.store/resolve`
-have no production callers. Fix: either wire the ones that solve D1/D3/C4 or move them to an
-`experimental/` area and stop counting them as shipped capability. Delete `terminate_process_tree`
-or call it (B6).
+**E3 — Dead "enterprise" modules (P1) — COMPLETED 2026-09-21.**
+Original issue: 10 speculative/enterprise specification modules (`core/orchestrator.py`, `core/job_queue.py`, `core/telemetry.py`, `core/metrics.py`, `core/engagement.py`, `core/agent_roles.py`, `core/benchmarks.py`, `core/risk.py`, `core/extractor.py`, `core/fuzz.py`) were tested only in Track R without active callers in the production `pentest_agent.py` ReAct loop, blurring runtime boundaries.
+Fix: Relocated all 10 modules to an isolated `experimental/` package (`experimental/orchestrator.py`, etc.). Updated internal and test fixture imports in `experimental/fuzz.py` and `eval/track_r_redteam.py`. The `core/` package is now strictly 100% active production runtime code.
 
 **E4 — Registry duplicate guard & contracts (P1).**
 Original issue: `tools/__init__.py` built `tool_map` with dict comprehension without duplicate guards.
@@ -429,17 +424,17 @@ Shipped:
 - E1 Single-Policy Gate & Approval Decision Propagation (`pentest_agent.py` threads real operator confirmation answer to `ctx.tool_executor.execute()`, ensuring broker receives true operator decision). Verified in R90.
 - C11 DPO Event Schema Reconciliation & Preference Mining (`pentest_agent.py` emits `turn_input`, `safety_passed`, `overclaim_detected`; `DPOExporter` mines verified $(x, y_w, y_l)$ preference pairs from forensic session logs). Verified in R91.
 - E2 Duplicated Policy Constants & Single-Sourcing (Model names unified via `core/config.py`, carryover decay unified in `compute_carryover_decay()`, target cleaning standardized on `clean_target()`).
+- E3 Dead Enterprise Modules Consolidation (Relocated 10 inactive specification modules from `core/` to isolated `experimental/` namespace, ensuring `core/` is 100% active production runtime code).
 New checks R81–R91; suite is now **168/168**.
 
 ### Remaining Opportunistic Backlog (Future Enhancements)
 
 The following items represent architectural polish and scale headroom, but do not block production or safety invariants:
 
-1. **E3 — Dead "Enterprise" Modules Consolidation (P1)**: 10 modules (`core/orchestrator.py`, `core/job_queue.py`, `core/telemetry.py`, `core/metrics.py`, `core/engagement.py`, `core/agent_roles.py`, `core/benchmarks.py`, `core/risk.py`, `core/extractor.py`, `core/fuzz.py`) are tested in Track R, but have no active callers in the production `pentest_agent.py` loop. Move them to an `experimental/` namespace or wire them directly into orchestrator extensions.
-2. **E5 — Full Hexagonal Port Decomposition (P2)**: `run_react_agent` in `pentest_agent.py` is ~1,180 LOC. While `LLMPort`, `ToolInvokerPort`, `ApprovalPort`, and `ScopePort` exist, the ReAct loop itself can be decomposed into a dedicated state-machine coordinator.
-3. **F4 — CLI `print()` vs Structured Logging Migration (P2)**: `core/config.py` provides centralized JSON logging, but the interactive CLI loop in `pentest_agent.py` still uses direct `print()` calls for terminal UI rendering.
-4. **D6 — Distributed Multi-GPU SFT Flywheel (P2)**: `models/sft/` is single-host, single-GPU serial. Manifest resume and multi-GPU DDP/FSDP can be added when training corpus scales.
-5. **Multi-Host Broker Daemon (Scalability)**: Running `ExecutionBroker` as a remote daemon (Option C) for multi-host distributed penetration testing agents.
+1. **E5 — Full Hexagonal Port Decomposition (P2)**: `run_react_agent` in `pentest_agent.py` is ~1,180 LOC. While `LLMPort`, `ToolInvokerPort`, `ApprovalPort`, and `ScopePort` exist, the ReAct loop itself can be decomposed into a dedicated state-machine coordinator.
+2. **F4 — CLI `print()` vs Structured Logging Migration (P2)**: `core/config.py` provides centralized JSON logging, but the interactive CLI loop in `pentest_agent.py` still uses direct `print()` calls for terminal UI rendering.
+3. **D6 — Distributed Multi-GPU SFT Flywheel (P2)**: `models/sft/` is single-host, single-GPU serial. Manifest resume and multi-GPU DDP/FSDP can be added when training corpus scales.
+4. **Multi-Host Broker Daemon (Scalability)**: Running `ExecutionBroker` as a remote daemon (Option C) for multi-host distributed penetration testing agents.
 
 ---
 

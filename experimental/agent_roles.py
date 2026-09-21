@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""core/agent_roles.py — Formal Model Boundary & Role Separation for LONLY v2.
+"""experimental/agent_roles.py — Formal Model Boundary & Role Separation for LONLY v2.
 
 Enforces:
 - Strict decoupling: Planner (Strategy) -> Specialist (Hypothesis) -> Deterministic Policy (Authorization) -> Verifier (Evidence Proof).

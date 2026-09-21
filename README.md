@@ -125,7 +125,7 @@ flowchart TD
 
 ### Multi-Model Role Separation
 
-LONLY enforces strict model boundaries defined in `core/agent_roles.py`:
+LONLY enforces strict model boundaries specified in `experimental/agent_roles.py` (and runtime-enforced via `core/broker.py` and `core/evidence.py`):
 
 | Role | Default Model / Backend | Responsibility | Authority Boundary |
 | :--- | :--- | :--- | :--- |
@@ -591,41 +591,42 @@ Lonly_HARNESS/
 ├── tests/                             # Benchmark datasets
 │   └── dlt/
 │       └── gold_standard_baseline.jsonl # 50-case Tier 1 Gold Baseline test suite
-├── core/                              # Deterministic security boundaries & DLT framework
-│   ├── agent_roles.py                 # Planner, Specialist, and Verifier roles
+├── core/                              # Deterministic security boundaries & runtime engine
 │   ├── audit.py                       # Cryptographic HMAC-SHA256 WAL audit ledger
-│   ├── benchmarks.py                  # Ground-truth benchmark evaluation engine
 │   ├── broker.py                      # ExecutionBroker & dynamic TargetPolicy synchronization
 │   ├── cli_reader.py                  # Readline arrow key history & tab autocompleter
 │   ├── config.py                      # Centralized runtime configuration & structured logging
 │   ├── dlt.py                         # DLT Engine, Scorer, 4-Tier Oracle & Pareto Optimizer
 │   ├── doctor.py                      # System diagnostics & dependency validator
 │   ├── embeddings.py                  # Centralized Ollama nomic-embed-text provider & prefix formatter
-│   ├── engagement.py                  # Engagement, Run, and Approval data structures
 │   ├── evidence.py                    # Content-addressable DAG evidence graph & ClaimVerifier
-│   ├── extractor.py                   # Structured fact extractor for prompt context hygiene
-│   ├── fuzz.py                        # Property-based adversarial fuzzer
 │   ├── guardrails.py                  # Scope control, confirmation gates, risk budgeting
-│   ├── job_queue.py                   # Transactional job queue & circuit breaker
-│   ├── metrics.py                     # Operational metrics & zero-defect SLA engine
 │   ├── model_client.py                # Resilient LLM wrapper (timeouts, retries, circuit breaker)
-│   ├── orchestrator.py                # DAG task graph orchestrator
 │   ├── parser.py                      # Resilient ReAct parsing, overclaim check & FQDN extractor
 │   ├── policy.py                      # TargetPolicy, CapabilityPolicy, ResolvedTarget
 │   ├── ports.py                       # Abstract LLM / tool / evidence / approval / scope ports
 │   ├── ratelimit.py                   # Thread-safe token-bucket rate limiter
-│   ├── risk.py                        # Multi-dimensional risk matrix & decision gates
 │   ├── sandbox.py                     # OS sandbox profiles & process containment
 │   ├── session.py                     # Persistent session workspaces (~/.lonly/sessions/)
 │   ├── session_context.py             # Per-engagement state (scope, history, broker, evidence)
 │   ├── signals.py                     # Graceful signal handling & child process cleanup
 │   ├── state.py                       # FindingsLog, TaskTree, phase routing table
 │   ├── storage.py                     # Atomic writes, locked JSONL appends, 0700 dirs
-│   ├── telemetry.py                   # Distributed tracing & provenance query engine
 │   ├── tool_context.py                # Per-call approval context (contextvars)
 │   ├── tool_dispatch.py               # Tool-call policy gate & evidence-recording executor
 │   ├── tool_pool.py                   # Bounded concurrent worker execution pool
 │   └── vault.py                       # Hardened SecretVault with scoping & rotation
+├── experimental/                      # Research prototypes, extended schemas, and specifications
+│   ├── agent_roles.py                 # Multi-model boundary & role specifications
+│   ├── benchmarks.py                  # Ground-truth benchmark evaluation engine
+│   ├── engagement.py                  # Multi-entity engagement and run hierarchy
+│   ├── extractor.py                   # Structured fact extractor for prompt context hygiene
+│   ├── fuzz.py                        # Property-based adversarial fuzzer
+│   ├── job_queue.py                   # Transactional job queue & circuit breaker
+│   ├── metrics.py                     # Operational metrics & reliability engine
+│   ├── orchestrator.py                # DAG task graph orchestrator
+│   ├── risk.py                        # Multi-dimensional risk matrix & decision gates
+│   └── telemetry.py                   # Distributed tracing & provenance query engine
 ├── tools/                             # Modular 24-tool subsystem (run_argv brokered)
 │   ├── __init__.py                    # Central tool registry
 │   ├── base.py                        # Subprocess execution wrapper & output bounds
