@@ -427,14 +427,17 @@ Shipped:
 - E3 Dead Enterprise Modules Consolidation (Relocated 10 inactive specification modules from `core/` to isolated `experimental/` namespace, ensuring `core/` is 100% active production runtime code).
 New checks R81–R91; suite is now **168/168**.
 
+### Phase 5 — Hexagonal Coordinator, Distributed SFT, Structured Logging & Remote Broker — COMPLETED 2026-09-21
+Shipped:
+- **F4 CLI Structured Logging Migration**: Configured logging sinks with file output and verbosity control (`--verbose`, `--quiet`, `--log-file`). Replaced terminal-only prints with structured `lonly.coordinator` logs while preserving clean operator terminal experience. Verified in R92.
+- **E5 Full Hexagonal Port Decomposition**: Extracted monolithic ReAct turn execution engine into `core/coordinator.py` (`ReActCoordinator`). Decoupled orchestrator from CLI shell, reducing `pentest_agent.py` by over 55% to a clean composition root. Verified in R93.
+- **D6 Distributed Multi-GPU SFT Flywheel**: Implemented `models/sft/manifest.py` (`SFTTrainingManifest`) tracking dataset SHA-256 and step metrics with checkpoint resume validation, alongside `models/sft/distributed_config.py` generating multi-GPU Accelerate DDP configs. Verified in R94.
+- **Multi-Host Remote Broker Daemon**: Implemented `core/remote_broker.py` (`RemoteBrokerServer` and `RemoteBrokerClient`) featuring HMAC-SHA256 signature authentication, replay defense (<60s drift), edge node scope enforcement, and sandboxed execution dispatch. Verified in R95.
+New checks R92–R95; suite is now **172/172**.
+
 ### Remaining Opportunistic Backlog (Future Enhancements)
 
-The following items represent architectural polish and scale headroom, but do not block production or safety invariants:
-
-1. **E5 — Full Hexagonal Port Decomposition (P2)**: `run_react_agent` in `pentest_agent.py` is ~1,180 LOC. While `LLMPort`, `ToolInvokerPort`, `ApprovalPort`, and `ScopePort` exist, the ReAct loop itself can be decomposed into a dedicated state-machine coordinator.
-2. **F4 — CLI `print()` vs Structured Logging Migration (P2)**: `core/config.py` provides centralized JSON logging, but the interactive CLI loop in `pentest_agent.py` still uses direct `print()` calls for terminal UI rendering.
-3. **D6 — Distributed Multi-GPU SFT Flywheel (P2)**: `models/sft/` is single-host, single-GPU serial. Manifest resume and multi-GPU DDP/FSDP can be added when training corpus scales.
-4. **Multi-Host Broker Daemon (Scalability)**: Running `ExecutionBroker` as a remote daemon (Option C) for multi-host distributed penetration testing agents.
+All high-, medium-, and low-priority tech debt, architectural modularization, and scalability backlog items identified in the audit have been fully implemented, verified, and integrated into the 172-check acceptance harness. Future research directions may explore multi-agent swarming protocols or dynamic cloud provisioning.
 
 ---
 

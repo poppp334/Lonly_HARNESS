@@ -24,6 +24,7 @@ LONLY is an autonomous penetration testing agent operating in a two-tier hybrid 
 Lonly_HARNESS/
 ├── pentest_agent.py          # Main CLI entrypoint & ReAct orchestrator loop
 ├── core/                     # Core runtime state, parsing, and guardrail policies
+│   ├── coordinator.py        # Decoupled hexagonal ReAct orchestration engine
 │   ├── guardrails.py         # Scope enforcement, confirm gates, risk budget
 │   ├── parser.py             # 4B ReAct and JSON extraction
 │   ├── state.py              # FindingsLog, TaskTree, phase routing
@@ -36,7 +37,8 @@ Lonly_HARNESS/
 │   ├── ratelimit.py          # Thread-safe token-bucket rate limiter
 │   ├── tool_pool.py          # Bounded concurrent worker execution pool
 │   ├── tool_dispatch.py      # Tool-call gate and evidence-recording executor
-│   └── tool_context.py       # Per-call approval + broker context (contextvars)
+│   ├── tool_context.py       # Per-call approval + broker context (contextvars)
+│   └── remote_broker.py      # Multi-host remote execution daemon & HMAC client
 ├── tools/                    # 24 modular pentesting tools
 │   ├── __init__.py           # Tool registry and tool_map
 │   ├── base.py               # run_argv wrapper, target cleaning, wordlist fallbacks
@@ -50,9 +52,9 @@ Lonly_HARNESS/
 │   ├── smoke_test.py         # Format adherence verification
 │   ├── benchmark_runner.py   # Benchmark evaluation runner
 │   ├── analyze_benchmark.py  # Trajectory and benchmark log analyzer
-│   └── sft/                  # Local SFT training flywheel (Unsloth QLoRA, GGUF merge)
+│   └── sft/                  # Local SFT training flywheel (manifest, distributed DDP, Unsloth QLoRA)
 ├── eval/                     # Offline test and evaluation harness
-│   ├── eval_lonly.py         # Consolidated 168-check test runner
+│   ├── eval_lonly.py         # Consolidated 172-check test runner
 │   ├── ci_security_gate.py   # Automated CI/CD security gate & invariant checker
 │   ├── check_docs.py         # Automated documentation integrity & anti-drift linter
 │   ├── track_a_runner.py     # Scenario integration suite (S1, S2, S4)
@@ -60,7 +62,7 @@ Lonly_HARNESS/
 │   ├── track_c_scorer.py     # Trajectory and loop quality scorer
 │   ├── track_e_cli.py        # CLI interaction and edge-case unit tests
 │   ├── track_f_privesc.py    # PrivEsc specialist delegation tests
-│   ├── track_r_redteam.py    # Adversarial red-team / security boundary suite (91 checks)
+│   ├── track_r_redteam.py    # Adversarial red-team / security boundary suite (95 checks)
 │   └── track_dlt.py          # DLT framework invariants
 ├── experimental/             # Research prototypes, extended schemas, and enterprise specifications
 │   ├── orchestrator.py       # DAG task graph orchestrator
@@ -101,7 +103,7 @@ Lonly_HARNESS/
 
 ## 4. Engineering & Contribution Rules
 
-1. **Zero Unverified Commits**: Run `eval/eval_lonly.py` before committing. All 168 checks must pass with exit code 0.
+1. **Zero Unverified Commits**: Run `eval/eval_lonly.py` before committing. All 172 checks must pass with exit code 0.
 2. **Modular Tool Contracts**: Tools must be defined under `tools/` with strict Pydantic `args_schema` and registered in `tools/__init__.py`. Never place raw tool execution code directly in `pentest_agent.py`.
 3. **Target Sanitization**: All host and URL parameters must pass through `clean_target()` or `ensure_url()` in `tools/base.py` to prevent formatting failures.
 4. **Safety Gating**:

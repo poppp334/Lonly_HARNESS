@@ -58,6 +58,15 @@ class LonlyConfig:
     log_level: str = field(
         default_factory=lambda: os.environ.get("LONLY_LOG_LEVEL", "INFO").upper()
     )
+    verbose: bool = field(
+        default_factory=lambda: os.environ.get("LONLY_VERBOSE", "0").lower() in ("1", "true", "yes")
+    )
+    quiet: bool = field(
+        default_factory=lambda: os.environ.get("LONLY_QUIET", "0").lower() in ("1", "true", "yes")
+    )
+    log_file: Optional[Path] = field(
+        default_factory=lambda: Path(os.environ["LONLY_LOG_FILE"]) if os.environ.get("LONLY_LOG_FILE") else None
+    )
 
 
 _GLOBAL_CONFIG: Optional[LonlyConfig] = None
@@ -77,12 +86,64 @@ def reset_config() -> None:
     _GLOBAL_CONFIG = None
 
 
+def configure_logging(
+    verbose: Optional[bool] = None,
+    quiet: Optional[bool] = None,
+    log_file: Optional[Path] = None,
+    level: Optional[str] = None,
+) -> None:
+    """Configure system-wide logging level and destinations."""
+    cfg = get_config()
+    if verbose is not None:
+        cfg.verbose = verbose
+    if quiet is not None:
+        cfg.quiet = quiet
+    if log_file is not None:
+        cfg.log_file = log_file
+    if level is not None:
+        cfg.log_level = level.upper()
+
+    target_level = logging.INFO
+    if cfg.verbose:
+        target_level = logging.DEBUG
+    elif cfg.quiet:
+        target_level = logging.WARNING
+    elif hasattr(logging, cfg.log_level):
+        target_level = getattr(logging, cfg.log_level)
+
+    # Reconfigure root and subsystem handlers
+    for name in ("lonly", "lonly.agent", "lonly.coordinator", "lonly.broker", "lonly.dlt"):
+        log = logging.getLogger(name)
+        log.setLevel(target_level)
+        for h in list(log.handlers):
+            h.setLevel(target_level)
+
+        if cfg.log_file:
+            cfg.log_file.parent.mkdir(parents=True, exist_ok=True)
+            # Add file handler if not already present
+            has_file_handler = any(isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", None) == str(cfg.log_file.resolve()) for h in log.handlers)
+            if not has_file_handler:
+                fh = logging.FileHandler(str(cfg.log_file), encoding="utf-8")
+                fh.setLevel(target_level)
+                fh.setFormatter(logging.Formatter(
+                    fmt='{"timestamp":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}',
+                    datefmt="%Y-%m-%dT%H:%M:%S",
+                ))
+                log.addHandler(fh)
+
+
 def get_logger(name: str = "lonly") -> logging.Logger:
     """Get or configure a standardized logger for LONLY subsystems."""
     logger = logging.getLogger(name)
     cfg = get_config()
 
-    level = getattr(logging, cfg.log_level, logging.INFO)
+    if cfg.verbose:
+        level = logging.DEBUG
+    elif cfg.quiet:
+        level = logging.WARNING
+    else:
+        level = getattr(logging, cfg.log_level, logging.INFO)
+
     logger.setLevel(level)
 
     if not logger.handlers:
@@ -94,5 +155,15 @@ def get_logger(name: str = "lonly") -> logging.Logger:
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
+
+        if cfg.log_file:
+            cfg.log_file.parent.mkdir(parents=True, exist_ok=True)
+            fh = logging.FileHandler(str(cfg.log_file), encoding="utf-8")
+            fh.setLevel(level)
+            fh.setFormatter(logging.Formatter(
+                fmt='{"timestamp":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}',
+                datefmt="%Y-%m-%dT%H:%M:%S",
+            ))
+            logger.addHandler(fh)
 
     return logger

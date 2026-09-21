@@ -2223,6 +2223,172 @@ class TestRedTeamHarness(unittest.TestCase):
             idempotent_count = DPOExporter.export_preference_pairs(log_file, output_path=out_dpo)
             self.assertEqual(idempotent_count, 0)
 
+    def test_r92_structured_logging_and_cli_verbosity(self):
+        """R92: Structured logging routes events to loggers and configure_logging adjusts levels and sinks."""
+        from core.config import get_logger, reset_config, configure_logging
+        import logging
+        import tempfile
+        from pathlib import Path
+
+        reset_config()
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                log_path = Path(tmpdir) / "lonly_test.jsonl"
+                configure_logging(verbose=True, log_file=log_path)
+                logger = get_logger("lonly.coordinator")
+                self.assertEqual(logger.level, logging.DEBUG)
+                logger.debug("Debug event trace")
+                logger.info("Info event trace")
+
+                self.assertTrue(log_path.exists())
+                content = log_path.read_text(encoding="utf-8")
+                self.assertIn("Debug event trace", content)
+                self.assertIn("Info event trace", content)
+
+                configure_logging(verbose=False, quiet=True)
+                self.assertEqual(logger.level, logging.WARNING)
+        finally:
+            reset_config()
+
+    def test_r93_hexagonal_react_coordinator_decoupling(self):
+        """R93: ReActCoordinator executes headless turns through abstract ports with zero CLI dependencies."""
+        from core.coordinator import ReActCoordinator
+        from core.session_context import SessionContext
+        from core.session import SessionManager
+        from langchain_core.messages import AIMessage
+        from unittest.mock import MagicMock
+
+        sm = SessionManager()
+        sess = sm.create_session("Test Headless Session")
+        mock_invoker = MagicMock()
+        ctx = SessionContext(session=sess, invoker=mock_invoker, scope=["127.0.0.1"])
+
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = AIMessage(content="Final Answer: Headless coordinator execution complete.")
+        mock_approval = MagicMock()
+        mock_approval.request.return_value = "y"
+
+        coordinator = ReActCoordinator(
+            context=ctx,
+            llm_port=mock_llm,
+            approval_port=mock_approval,
+        )
+
+        result = coordinator.run_turn("Test headless turn", max_steps=3)
+        self.assertIn("Headless coordinator execution complete", result)
+        self.assertEqual(mock_llm.invoke.call_count, 1)
+        self.assertEqual(len(ctx.chat_history), 2)
+
+    def test_r94_distributed_sft_manifest_and_ddp_flywheel(self):
+        """R94: SFT training manifest tracks dataset hash, step telemetry, and generates accelerate config."""
+        from models.sft.manifest import SFTTrainingManifest
+        from models.sft.distributed_config import generate_accelerate_config
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ds_path = Path(tmpdir) / "data.jsonl"
+            ds_path.write_text('{"text": "test trace sample"}\n', encoding="utf-8")
+
+            manifest = SFTTrainingManifest.create(
+                run_id="run-001",
+                base_model="phi4-mini",
+                dataset_path=str(ds_path),
+                output_dir=tmpdir,
+                num_gpus=2,
+                distributed_backend="ddp",
+            )
+            self.assertTrue(manifest.dataset_sha256)
+            self.assertEqual(manifest.num_gpus, 2)
+            self.assertEqual(manifest.distributed_backend, "ddp")
+
+            # Save and reload
+            saved_p = manifest.save()
+            self.assertTrue(saved_p.exists())
+            loaded = SFTTrainingManifest.load(saved_p)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded.run_id, "run-001")
+
+            # Checkpoint resumption check
+            can_resume, msg = manifest.can_resume()
+            self.assertFalse(can_resume)
+
+            ck_dir = Path(tmpdir) / "checkpoint-100"
+            ck_dir.mkdir()
+            (ck_dir / "trainer_state.json").write_text("{}", encoding="utf-8")
+            manifest.record_step(step=100, loss=0.45, epoch=1.0, checkpoint_path=str(ck_dir))
+            can_resume, msg = manifest.can_resume()
+            self.assertTrue(can_resume)
+            self.assertEqual(manifest.best_loss, 0.45)
+
+            # Accelerate config generation
+            acc_yaml = Path(tmpdir) / "accelerate_config.yaml"
+            generate_accelerate_config(acc_yaml, num_processes=2, mixed_precision="bf16")
+            self.assertTrue(acc_yaml.exists())
+            text = acc_yaml.read_text(encoding="utf-8")
+            self.assertIn("num_processes: 2", text)
+            self.assertIn("mixed_precision: bf16", text)
+
+    def test_r95_multi_host_remote_broker_daemon(self):
+        """R95: RemoteBrokerServer enforces HMAC authentication, scope gating, and dispatches via client."""
+        import socket
+        from core.remote_broker import RemoteBrokerServer, RemoteBrokerClient
+        from unittest.mock import MagicMock
+        from core.broker import ExecutionResult
+
+        sock = socket.socket()
+        sock.bind(("", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+
+        mock_local_broker = MagicMock()
+        mock_local_broker.execute.return_value = ExecutionResult(
+            execution_id="test-exec-id",
+            executable="nmap",
+            argv=["-sV", "127.0.0.1"],
+            stdout="Remote execution output",
+            stderr="",
+            exit_code=0,
+            duration_ms=12.5,
+            timestamp="2026-09-21T18:00:00",
+            truncated=False,
+            output="Remote execution output",
+        )
+
+        secret = "secret-token-12345"
+        server = RemoteBrokerServer(
+            port=port,
+            secret_key=secret,
+            allowed_scope=["127.0.0.1", "10.0.0.0/24"],
+            broker=mock_local_broker,
+        )
+        server.start()
+
+        try:
+            client = RemoteBrokerClient(server_url=f"http://127.0.0.1:{port}", secret_key=secret)
+            health = client.check_health()
+            self.assertEqual(health.get("status"), "healthy")
+
+            # 1. Valid execution
+            res = client.execute(executable="nmap", argv=["-sV", "127.0.0.1"], target="127.0.0.1")
+            self.assertEqual(res.exit_code, 0)
+            self.assertEqual(res.stdout, "Remote execution output")
+            self.assertEqual(mock_local_broker.execute.call_count, 1)
+
+            # 2. Invalid HMAC signature rejection
+            bad_client = RemoteBrokerClient(server_url=f"http://127.0.0.1:{port}", secret_key="wrong-key")
+            bad_res = bad_client.execute(executable="nmap", argv=["127.0.0.1"], target="127.0.0.1")
+            self.assertEqual(bad_res.exit_code, 1)
+            self.assertIn("401", bad_res.stderr)
+
+            # 3. Scope rejection at edge node
+            out_of_scope_res = client.execute(executable="nmap", argv=["203.0.113.5"], target="203.0.113.5")
+            self.assertEqual(out_of_scope_res.exit_code, 1)
+            self.assertIn("403", out_of_scope_res.stderr)
+        finally:
+            server.stop()
+
+
 
 def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
     """Run all Track R adversarial checks and return (name, passed, detail) tuples."""
@@ -2323,6 +2489,10 @@ def run_track_r_fixtures() -> list[tuple[str, bool, str]]:
         ("R89 Tool registry duplicate guard and atomic report persistence", True, ""),
         ("R90 E1 single-policy gate: operator decision drives broker approved flag", True, ""),
         ("R91 DPO session log schema reconciliation (x, y_w, y_l preference export)", True, ""),
+        ("R92 Structured logging and CLI verbosity filtering", True, ""),
+        ("R93 Hexagonal ReAct coordinator port decoupling", True, ""),
+        ("R94 SFT training manifest and distributed DDP flywheel", True, ""),
+        ("R95 Multi-host remote broker daemon and HMAC authentication", True, ""),
     ]
     if not result.wasSuccessful():
         for i, failure in enumerate(result.failures + result.errors):

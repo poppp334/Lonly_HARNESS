@@ -29,7 +29,7 @@ Unauthorized access to computer systems, networks, or digital infrastructure is 
 5. [Tool Arsenal (24 Brokered Tools)](#tool-arsenal-24-brokered-tools)
 6. [Interactive CLI & Shell Interface](#interactive-cli--shell-interface)
 7. [Forensic Evidence & Cryptographic Audit](#forensic-evidence--cryptographic-audit)
-8. [Adversarial Hardening & Acceptance Suite (168/168 Checks)](#adversarial-hardening--acceptance-suite-168168-checks)
+8. [Adversarial Hardening & Acceptance Suite (172/172 Checks)](#adversarial-hardening--acceptance-suite-172172-checks)
 9. [Installation & Quick Start](#installation--quick-start)
    - [PrivEsc Specialist Model (`privesc-llm-rl:4b`) — Build & Serve](#privesc-specialist-model-privesc-llm-rl4b--build--serve)
 10. [CLI Command Reference & Workflow Examples](#cli-command-reference--workflow-examples)
@@ -292,9 +292,9 @@ The LONLY command interface provides an operator-centric terminal experience:
 
 ---
 
-## Adversarial Hardening & Acceptance Suite (168/168 Checks)
+## Adversarial Hardening & Acceptance Suite (172/172 Checks)
 
-LONLY maintains a unified automated acceptance test suite verifying **168 production invariants**:
+LONLY maintains a unified automated acceptance test suite verifying **172 production invariants**:
 
 ```bash
 make test
@@ -311,10 +311,10 @@ make test
 | **Track A (A1–A3)** | Scenario integration (Web Reconnaissance, PrivEsc Specialist, Full 5-Phase Assessment). | **3/3 PASS** |
 | **Track E (E1–E8)** | CLI findings summarization, confirmation denial flows, risk checkpoints, scope gate, evidence gate, prompt state injection, Thai Unicode resilience. | **8/8 PASS** |
 | **Track F (F1–F10)** | PrivEsc specialist delegation node (config gates, SSH argv contract, `got_root` heuristics, trajectory path). | **10/10 PASS** |
-| **Track R (R1–R91)** | Adversarial Red Team Suite (Shell metacharacter injection, IPv6 scope bypass, URL spoofing, SecretVault token zeroization, Evidence DAG tamper detection, AST `shell=False` invariant, `CapabilityPolicy` manifests, `ResolvedTarget` rebinding defense, HMAC-SHA256 audit ledger, `ClaimVerifier` typed claims, OS sandbox profiles, broker sandbox/audit wiring, DAG orchestrator, multi-dimensional risk matrix, property fuzzing, telemetry distributed tracing, ResilientLLM timeouts/retries/breaker, token-bucket rate limiting, parallel tool mapping, parallel DLT benchmark, honest fluency scoring, PrivEsc cancellation, central config overrides, signal handlers child tracking, docs integrity anti-drift, pinned dependencies, child env scrubbing, curl data-raw defense, doctor diagnostics alignment, process tree timeout kill and partial output recovery, broker bounded execution history, ChromaDB absolute path resolution, capability manifest sandbox profiles and audit logging, DLT escalation bare path safety & idempotent DPO export, tool registry duplicate guard and atomic report persistence, E1 single-policy gate operator decision propagation, C11 DPO session log schema reconciliation). | **91/91 PASS** |
+| **Track R (R1–R95)** | Adversarial Red Team Suite (Shell metacharacter injection, IPv6 scope bypass, URL spoofing, SecretVault token zeroization, Evidence DAG tamper detection, AST `shell=False` invariant, `CapabilityPolicy` manifests, `ResolvedTarget` rebinding defense, HMAC-SHA256 audit ledger, `ClaimVerifier` typed claims, OS sandbox profiles, broker sandbox/audit wiring, DAG orchestrator, multi-dimensional risk matrix, property fuzzing, telemetry distributed tracing, ResilientLLM timeouts/retries/breaker, token-bucket rate limiting, parallel tool mapping, parallel DLT benchmark, honest fluency scoring, PrivEsc cancellation, central config overrides, signal handlers child tracking, docs integrity anti-drift, pinned dependencies, child env scrubbing, curl data-raw defense, doctor diagnostics alignment, process tree timeout kill and partial output recovery, broker bounded execution history, ChromaDB absolute path resolution, capability manifest sandbox profiles and audit logging, DLT escalation bare path safety & idempotent DPO export, tool registry duplicate guard and atomic report persistence, E1 single-policy gate operator decision propagation, C11 DPO session log schema reconciliation, F4 structured logging and CLI verbosity, E5 hexagonal ReAct coordinator decoupling, D6 distributed SFT manifest and DDP flywheel, Multi-host remote execution daemon & HMAC authentication). | **95/95 PASS** |
 | **Track DLT (DLT1–DLT15)** | Dynamics Language Test Framework invariants (Composite score weights, Semantic argument validation, Safety zero-defect penalties, 4-tier Oracle resolution, Pareto 3-tier fallback, runner-port benchmark execution, no-fabrication guard, negative control). | **15/15 PASS** |
 | **Track B (B0)** | Subprocess-isolated smoke validation across all 24 security tools. | **1/1 PASS** |
-| **Total** | **Unified Acceptance & Invariant Suite** | **168/168 PASS (100%)** |
+| **Total** | **Unified Acceptance & Invariant Suite** | **172/172 PASS (100%)** |
 
 ---
 
@@ -340,7 +340,7 @@ make setup
 # 3. System Diagnostic & Health Verification
 make doctor
 
-# 4. Run Complete 168-Check Acceptance Suite
+# 4. Run Complete 172-Check Acceptance Suite
 make test
 
 # 5. Run DLT Tier 1 Baseline Benchmark Scorecard
@@ -596,6 +596,7 @@ Lonly_HARNESS/
 │   ├── broker.py                      # ExecutionBroker & dynamic TargetPolicy synchronization
 │   ├── cli_reader.py                  # Readline arrow key history & tab autocompleter
 │   ├── config.py                      # Centralized runtime configuration & structured logging
+│   ├── coordinator.py                 # Decoupled hexagonal ReAct orchestration engine
 │   ├── dlt.py                         # DLT Engine, Scorer, 4-Tier Oracle & Pareto Optimizer
 │   ├── doctor.py                      # System diagnostics & dependency validator
 │   ├── embeddings.py                  # Centralized Ollama nomic-embed-text provider & prefix formatter
@@ -606,6 +607,7 @@ Lonly_HARNESS/
 │   ├── policy.py                      # TargetPolicy, CapabilityPolicy, ResolvedTarget
 │   ├── ports.py                       # Abstract LLM / tool / evidence / approval / scope ports
 │   ├── ratelimit.py                   # Thread-safe token-bucket rate limiter
+│   ├── remote_broker.py               # Multi-host remote execution daemon & HMAC client
 │   ├── sandbox.py                     # OS sandbox profiles & process containment
 │   ├── session.py                     # Persistent session workspaces (~/.lonly/sessions/)
 │   ├── session_context.py             # Per-engagement state (scope, history, broker, evidence)
@@ -643,8 +645,8 @@ Lonly_HARNESS/
 │   ├── Modelfile.template             # Ollama model definition template with tuned hyperparameters
 │   ├── merge_adapters.sh              # Adapter merge utility
 │   ├── quantize_and_serve.sh          # GGUF quantization and serving pipeline
-│   └── sft/                           # Local SFT training flywheel (Unsloth QLoRA, GGUF merge)
-├── eval/                              # Acceptance & Evaluation Suite (168/168 checks)
+│   └── sft/                           # Local SFT training flywheel (manifest, distributed DDP, Unsloth QLoRA)
+├── eval/                              # Acceptance & Evaluation Suite (172/172 checks)
 │   ├── eval_lonly.py                  # Unified acceptance test runner
 │   ├── ci_security_gate.py            # Automated CI/CD security gate & invariant checker
 │   ├── check_docs.py                  # Automated documentation integrity & anti-drift linter
@@ -654,7 +656,7 @@ Lonly_HARNESS/
 │   ├── track_dlt.py                   # DLT framework invariant tests (Track DLT)
 │   ├── track_e_cli.py                 # CLI interactive & edge case test suite (Track E)
 │   ├── track_f_privesc.py             # PrivEsc specialist delegation tests (Track F)
-│   └── track_r_redteam.py             # 91-check adversarial red team suite (Track R)
+│   └── track_r_redteam.py             # 95-check adversarial red team suite (Track R)
 ├── setup/                             # Native system tool installer scripts
 │   └── install-system-tools.sh        # Arch/Omarchy/Kali native package & wordlist installer
 ├── docs/                              # Technical specifications & design documents
